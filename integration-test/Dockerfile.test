@@ -1,0 +1,26 @@
+# Dockerfile for integration test runner
+FROM alpine:latest
+
+# Install necessary packages
+RUN apk add --no-cache \
+    bash \
+    curl \
+    postgresql-client \
+    jq
+
+# Create app directory
+WORKDIR /app
+
+# Copy test scripts
+COPY integration-test/scripts/ ./
+
+# Make scripts executable
+RUN chmod +x *.sh
+
+# Create test results directory
+RUN mkdir -p /test-results
+
+# Set up environment
+ENV PGPASSWORD=matrix_password
+
+ENTRYPOINT ["./run-integration-tests.sh"]

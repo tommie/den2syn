@@ -1,0 +1,47 @@
+# Dockerfile for den2syn migration container
+FROM golang:1.24.4-alpine AS builder
+
+# Install necessary packages
+RUN apk add --no-cache git gcc musl-dev postgresql-client
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY cmd/ ./cmd/
+COPY sources/ ./sources/
+
+# Build the binary
+RUN go build -o den2syn ./cmd/den2syn
+
+# Final runtime image
+FROM alpine:latest
+
+# Install PostgreSQL client and wait utilities
+RUN apk add --no-cache postgresql-client bash curl
+
+# Create app directory
+WORKDIR /app
+
+# Copy the built binary
+COPY --from=builder /app/den2syn ./
+
+# Copy helper scripts
+COPY integration-test/scripts/ ./
+
+# Make scripts executable
+RUN chmod +x *.sh
+
+# Create logs directory
+RUN mkdir -p /logs
+
+# Set up environment
+ENV PGPASSWORD=matrix_password
+
+ENTRYPOINT ["./wait-for-db.sh"]

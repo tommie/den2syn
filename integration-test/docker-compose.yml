@@ -1,0 +1,144 @@
+services:
+  # PostgreSQL database for both Dendrite and Synapse
+  postgres:
+    image: postgres:13
+    container_name: den2syn-postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: matrix
+      POSTGRES_PASSWORD: matrix_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+      - ./dendrite-dumps:/dendrite-dumps:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matrix -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Service to initialize Synapse database schema
+  synapse-schema-init:
+    image: matrixdotorg/synapse:v1.133.0
+    container_name: den2syn-synapse-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=synapse
+      - POSTGRES_USER=matrix
+      - POSTGRES_PASSWORD=matrix_password
+    volumes:
+      - synapse_data:/data
+    entrypoint: []
+    command:
+      - sh
+      - -ec
+      - |
+        echo 'Generating minimal Synapse config for database initialization...'
+        python -m synapse.app.homeserver \
+          --server-name=${SERVER_NAME:-test.local} \
+          --config-path=/data/homeserver.yaml \
+          --generate-config \
+          --report-stats=no \
+          --data-directory=/data
+        echo 'Patching config for PostgreSQL...'
+        sed -i 's/name: sqlite3/name: psycopg2/' /data/homeserver.yaml
+        sed -i 's|database: /data/homeserver.db|database: synapse\n    user: matrix\n    password: matrix_password\n    host: postgres\n    port: 5432\n    cp_min: 5\n    cp_max: 10|' /data/homeserver.yaml
+        echo 'Patching bind addresses to listen on all interfaces...'
+        sed -i 's/bind_addresses: \[.*\]/bind_addresses: ["0.0.0.0"]/' /data/homeserver.yaml
+        echo 'Patching log config for console output...'
+        sed -i 's/handlers: \[buffer\]/handlers: [console]/' /data/${SERVER_NAME:-test.local}.log.config
+        echo 'Initializing Synapse database schema...'
+        update_synapse_database --database-config /data/homeserver.yaml
+        echo 'Synapse database schema initialized successfully!'
+
+  # Service to run den2syn migration
+  den2syn-migration:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile.den2syn
+    container_name: den2syn-migration
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DENDRITE_DB_URL=postgres://matrix:matrix_password@postgres:5432/dendrite?sslmode=disable
+      - SYNAPSE_DB_URL=postgres://matrix:matrix_password@postgres:5432/synapse?sslmode=disable
+    command: ["postgres", "5432", "--", "./run-migration.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
+      - migration_logs:/logs
+
+  # Synapse for validation
+  synapse:
+    image: matrixdotorg/synapse:v1.133.0
+    container_name: den2syn-synapse
+    depends_on:
+      den2syn-migration:
+        condition: service_completed_successfully
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=synapse
+      - POSTGRES_USER=matrix
+      - POSTGRES_PASSWORD=matrix_password
+    volumes:
+      - synapse_data:/data
+    ports:
+      - "8008:8008"
+    entrypoint: []
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -f /data/homeserver.yaml ]; then
+          echo 'Generating Synapse config...'
+          python -m synapse.app.homeserver \
+            --server-name=${SERVER_NAME:-test.local} \
+            --config-path=/data/homeserver.yaml \
+            --generate-config \
+            --report-stats=no \
+            --data-directory=/data
+          echo 'Patching config for PostgreSQL...'
+          sed -i 's/name: sqlite3/name: psycopg2/' /data/homeserver.yaml
+          sed -i 's|database: /data/homeserver.db|database: synapse\n    user: matrix\n    password: matrix_password\n    host: postgres\n    port: 5432\n    cp_min: 5\n    cp_max: 10|' /data/homeserver.yaml
+          echo 'Patching bind addresses to listen on all interfaces...'
+          sed -i 's/bind_addresses: \[.*\]/bind_addresses: ["0.0.0.0"]/' /data/homeserver.yaml
+          echo 'Patching log config for console output...'
+          sed -i 's/handlers: \[buffer\]/handlers: [console]/' /data/${SERVER_NAME:-test.local}.log.config
+        fi
+        echo 'Updating Synapse database schema...'
+        update_synapse_database --database-config /data/homeserver.yaml --run-background-updates
+        echo 'Starting Synapse validation...'
+        python -m synapse.app.homeserver -c /data/homeserver.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sS http://localhost:8008/_matrix/static/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Test runner service
+  integration-test:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile.test
+    container_name: den2syn-test
+    depends_on:
+      synapse:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+      - migration_logs:/logs:ro
+      - test_results:/test-results
+    command: ["./run-integration-tests.sh"]
+
+volumes:
+  postgres_data:
+  migration_logs:
+  synapse_data:
+  test_results:
