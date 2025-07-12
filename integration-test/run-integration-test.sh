@@ -112,22 +112,6 @@ else
 fi
 
 echo
-echo "=== Test Results ==="
-
-# Show migration logs
-echo "Migration summary:"
-docker compose exec den2syn-migration cat /logs/migration.log | tail -20 || true
-
-# Show test results
-echo
-echo "Integration test summary:"
-if docker compose exec integration-test test -f /test-results/test-summary.json; then
-    docker compose exec integration-test cat /test-results/test-summary.json | jq . 2>/dev/null || cat
-else
-    echo "Test summary not available"
-fi
-
-echo
 echo "=== Final Verification ==="
 
 # Final database verification
