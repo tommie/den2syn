@@ -624,7 +624,7 @@ func (m *Migrator) migrateUsers(tx *sql.Tx) error {
 	// Read user data from Dendrite
 	rows, err := m.DendriteDB.Query(`
 		SELECT
-			localpart || ':' || server_name as name,
+			'@' || localpart || ':' || server_name as name,
 			password_hash,
 			created_ts,
 			CASE WHEN account_type = 1 THEN true ELSE false END as admin,
@@ -729,7 +729,7 @@ func (m *Migrator) migrateDevices(tx *sql.Tx) error {
 	// Read device data from Dendrite
 	rows, err := m.DendriteDB.Query(`
 		SELECT
-			d.localpart || ':' || d.server_name as user_id,
+			'@' || d.localpart || ':' || d.server_name as user_id,
 			d.device_id,
 			d.display_name,
 			d.last_seen_ts,
@@ -843,7 +843,7 @@ func (m *Migrator) migrateAccessTokens(tx *sql.Tx) error {
 	// Read access token data from Dendrite
 	rows, err := m.DendriteDB.Query(`
 		SELECT
-			d.localpart || ':' || d.server_name as user_id,
+			'@' || d.localpart || ':' || d.server_name as user_id,
 			d.device_id,
 			d.access_token as token,
 			NULL as valid_until_ms,
@@ -1019,20 +1019,41 @@ func (m *Migrator) migrateEvents(tx *sql.Tx) error {
 			e.event_id,
 			etypes.event_type as type,
 			rooms.room_id,
-			COALESCE(ej.event_json::jsonb->>'content', '{}')::jsonb as content,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					COALESCE(ej.event_json::jsonb->>'content', '{}')::jsonb
+				ELSE '{}'::jsonb
+			END as content,
 			e.depth,
 			ROW_NUMBER() OVER (ORDER BY e.event_nid) as stream_ordering,
 			(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint as received_ts,
-			COALESCE(ej.event_json::jsonb->>'sender', '') as sender,
-			(ej.event_json LIKE '%"url"%') as contains_url,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					CASE
+						WHEN (ej.event_json::jsonb->>'sender') LIKE '@%' THEN ej.event_json::jsonb->>'sender'
+						WHEN (ej.event_json::jsonb->>'sender') IS NOT NULL THEN '@' || (ej.event_json::jsonb->>'sender')
+						ELSE ''
+					END
+				ELSE ''
+			END as sender,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					(ej.event_json LIKE '%"url"%')
+				ELSE false
+			END as contains_url,
 			CASE
 				WHEN skeys.event_state_key = '' THEN ''
 				WHEN skeys.event_state_key IS NULL THEN NULL
+				WHEN etypes.event_type = 'm.room.member' AND skeys.event_state_key NOT LIKE '@%' THEN '@' || skeys.event_state_key
 				ELSE skeys.event_state_key
 			END as state_key,
 			CASE WHEN e.is_rejected THEN 'unknown' ELSE NULL END as rejection_reason,
-			COALESCE((ej.event_json::jsonb->>'origin_server_ts')::bigint,
-					(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint) as origin_server_ts
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					COALESCE((ej.event_json::jsonb->>'origin_server_ts')::bigint,
+							(EXTRACT(EPOCH FROM NOW()) * 1000)::bigint)
+				ELSE (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint
+			END as origin_server_ts
 		FROM roomserver_events e
 		JOIN roomserver_rooms rooms ON e.room_nid = rooms.room_nid
 		JOIN roomserver_event_types etypes ON e.event_type_nid = etypes.event_type_nid
@@ -1213,8 +1234,9 @@ func (m *Migrator) migrateCurrentState(tx *sql.Tx) error {
 			etypes.event_type as type,
 			skeys.event_state_key as state_key,
 			CASE
-				WHEN etypes.event_type = 'm.room.member' THEN
+				WHEN etypes.event_type = 'm.room.member' AND ej.event_json IS NOT NULL AND ej.event_json != '' THEN
 					COALESCE(ej.event_json::jsonb->>'membership', 'leave')
+				WHEN etypes.event_type = 'm.room.member' THEN 'leave'
 				ELSE NULL
 			END as membership
 		FROM roomserver_events e
@@ -1288,12 +1310,36 @@ func (m *Migrator) migrateRoomMemberships(tx *sql.Tx) error {
 	rows, err := m.DendriteDB.Query(`
 		SELECT
 			e.event_id,
-			skeys.event_state_key as user_id,
-			COALESCE(ej.event_json::jsonb->>'sender', '') as sender,
+			CASE
+				WHEN skeys.event_state_key LIKE '@%' THEN skeys.event_state_key
+				WHEN skeys.event_state_key IS NOT NULL THEN '@' || skeys.event_state_key
+				ELSE skeys.event_state_key
+			END as user_id,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					CASE
+						WHEN (ej.event_json::jsonb->>'sender') LIKE '@%' THEN ej.event_json::jsonb->>'sender'
+						WHEN (ej.event_json::jsonb->>'sender') IS NOT NULL THEN '@' || (ej.event_json::jsonb->>'sender')
+						ELSE ''
+					END
+				ELSE ''
+			END as sender,
 			rooms.room_id,
-			COALESCE(ej.event_json::jsonb->>'membership', 'leave') as membership,
-			ej.event_json::jsonb->>'display_name' as display_name,
-			ej.event_json::jsonb->>'avatar_url' as avatar_url,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					COALESCE(ej.event_json::jsonb->>'membership', 'leave')
+				ELSE 'leave'
+			END as membership,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					ej.event_json::jsonb->>'display_name'
+				ELSE NULL
+			END as display_name,
+			CASE
+				WHEN ej.event_json IS NOT NULL AND ej.event_json != '' THEN
+					ej.event_json::jsonb->>'avatar_url'
+				ELSE NULL
+			END as avatar_url,
 			false as forgotten
 		FROM roomserver_events e
 		JOIN roomserver_rooms rooms ON e.room_nid = rooms.room_nid

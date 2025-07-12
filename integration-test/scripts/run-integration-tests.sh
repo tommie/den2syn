@@ -156,6 +156,117 @@ else
 fi
 
 echo
+echo "=== Test 6: User ID Format Validation ==="
+
+# Check that all user IDs in Synapse database have proper @ format
+echo "Validating user ID formats in Synapse database..."
+
+# Create a complete database dump to search for user IDs without @ prefix
+echo "Creating complete database dump for text analysis..."
+pg_dump "$SYNAPSE_DB_URL" --data-only --inserts > /tmp/synapse_full_dump.sql
+
+# Search for user IDs that don't start with @ in the complete dump
+echo "Searching for invalid user ID formats across all tables..."
+
+# Look for known user localparts without @ prefix
+echo "Checking for user localparts without @ prefix..."
+if [ -n "$SAMPLE_LOCALPARTS" ]; then
+    LOCALPARTS=${SAMPLE_LOCALPARTS//,/|}
+    INVALID_USER_IDS=$(grep -v public.user_directory_search /tmp/synapse_full_dump.sql | grep -E "($LOCALPARTS)" | grep -Ev "@($LOCALPARTS):${SERVER_NAME//./\\.}" || :)
+
+    if [ -z "$INVALID_USER_IDS" ]; then
+        echo "✓ No user localparts found without @ prefix"
+        USER_ID_FORMAT_TEST="PASSED"
+    else
+        echo "✗ Found user localparts without @ prefix:"
+
+        # Group by table for better analysis
+        echo
+        echo "=== Detailed breakdown by table ==="
+        echo "$INVALID_USER_IDS" | while read -r line; do
+            table_name=$(echo "$line" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | head -n10)
+            echo "Table: $table_name"
+            echo "  $line"
+            echo
+        done
+
+        echo "=== Summary ==="
+        echo "Total invalid user ID occurrences found: $(echo "$INVALID_USER_IDS" | wc -l)"
+        echo "Tables affected:"
+        echo "$INVALID_USER_IDS" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | sort -u
+
+        USER_ID_FORMAT_TEST="FAILED"
+    fi
+else
+    echo "- Skipping localparts test, since SAMPLE_LOCALPARTS is not defined"
+fi
+
+# Also check for any localpart:domain patterns without @
+echo "Checking for localpart:domain format without @ prefix across all tables..."
+LOCALPART_ONLY=$(grep -E "'[^@!a-zA-Z0-9_][a-zA-Z0-9_]+:${SERVER_NAME//./\\.}'" /tmp/synapse_full_dump.sql || :)
+
+if [ -z "$LOCALPART_ONLY" ]; then
+    echo "✓ No localpart:domain patterns found without @ prefix"
+else
+    echo "✗ Found localpart:domain patterns without @ prefix:"
+    echo
+    echo "=== Detailed breakdown by table ==="
+    echo "$LOCALPART_ONLY" | while read -r line; do
+        table_name=$(echo "$line" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | head -n10)
+        echo "Table: $table_name"
+        echo "  $line"
+        echo
+    done
+
+    echo "=== Summary ==="
+    echo "Total localpart:domain occurrences found: $(echo "$LOCALPART_ONLY" | wc -l)"
+    echo "Tables affected:"
+    echo "$LOCALPART_ONLY" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | sort -u
+
+    USER_ID_FORMAT_TEST="FAILED"
+fi
+
+# Additional check for any Matrix user ID pattern without @
+echo "Checking for any Matrix user ID patterns without @ prefix..."
+MATRIX_ID_PATTERN=$(grep -E "'[^@!a-zA-Z0-9_.-][a-zA-Z0-9_.-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'" /tmp/synapse_full_dump.sql || :)
+
+if [ -z "$MATRIX_ID_PATTERN" ]; then
+    echo "✓ No Matrix user ID patterns found without @ prefix"
+else
+    echo "✗ Found Matrix user ID patterns without @ prefix:"
+    echo
+    echo "=== Detailed breakdown by table ==="
+    echo "$MATRIX_ID_PATTERN" | while read -r line; do
+        table_name=$(echo "$line" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | head -n10)
+        echo "Table: $table_name"
+        echo "  $line"
+        echo
+    done
+
+    echo "=== Summary ==="
+    echo "Total Matrix ID pattern occurrences found: $(echo "$MATRIX_ID_PATTERN" | wc -l)"
+    echo "Tables affected:"
+    echo "$MATRIX_ID_PATTERN" | grep -o "INSERT INTO [^(]*" | sed 's/INSERT INTO //' | sort -u
+
+    USER_ID_FORMAT_TEST="FAILED"
+fi
+
+# Show summary of what we found
+echo "Summary of database scan:"
+TOTAL_LINES=$(wc -l < /tmp/synapse_full_dump.sql)
+TOTAL_INSERTS=$(grep -c "INSERT INTO" /tmp/synapse_full_dump.sql)
+echo "  Total lines scanned: $TOTAL_LINES"
+echo "  Total INSERT statements: $TOTAL_INSERTS"
+
+# Clean up
+rm -f /tmp/synapse_full_dump.sql
+
+if [ "$USER_ID_FORMAT_TEST" = "FAILED" ]; then
+    echo "✗ User ID format validation failed"
+    exit 1
+fi
+
+echo
 echo "=== Integration Test Summary ==="
 
 # Generate test summary
@@ -169,7 +280,8 @@ cat > "$RESULTS_DIR/test-summary.json" <<EOF
         "database_structure": "PASSED",
         "data_migration": "PASSED",
         "api_endpoints": "PASSED",
-        "data_integrity": "PASSED"
+        "data_integrity": "PASSED",
+        "user_id_format": "$USER_ID_FORMAT_TEST"
     },
     "data_counts": {
         "events": $EVENTS_COUNT,
@@ -183,6 +295,7 @@ echo "✓ All integration tests passed!"
 echo "✓ Migration from Dendrite to Synapse completed successfully"
 echo "✓ Synapse is running and serving API requests"
 echo "✓ Data integrity checks passed"
+echo "✓ User ID format validation passed"
 echo
 echo "Test results saved to: $RESULTS_DIR"
 echo "Timestamp: $(date)"

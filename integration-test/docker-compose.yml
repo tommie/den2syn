@@ -140,6 +140,9 @@ services:
     depends_on:
       synapse:
         condition: service_healthy
+    environment:
+      - SERVER_NAME=${SERVER_NAME:-test.local}
+      - SAMPLE_LOCALPARTS=${SAMPLE_LOCALPARTS:-}
     volumes:
       - ./scripts:/scripts:ro
       - migration_logs:/logs:ro
