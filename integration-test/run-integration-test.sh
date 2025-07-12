@@ -62,7 +62,7 @@ echo "=== Initializing Synapse Database Schema ==="
 
 # Initialize Synapse database schema first
 echo "Initializing Synapse database schema..."
-if docker compose up synapse-schema-init; then
+if docker compose up --exit-code-from synapse-schema-init synapse-schema-init; then
     echo "✓ Synapse database schema initialized successfully"
 else
     echo "✗ Synapse database schema initialization failed"
@@ -76,7 +76,7 @@ echo "=== Running Migration ==="
 
 # Run the migration
 echo "Starting den2syn migration..."
-if docker compose up den2syn-migration; then
+if docker compose up --exit-code-from den2syn-migration den2syn-migration; then
     echo "✓ Migration completed successfully"
 else
     echo "✗ Migration failed"
@@ -100,7 +100,7 @@ echo
 echo "=== Running Integration Tests ==="
 
 # Run integration tests
-if docker compose up integration-test; then
+if docker compose up --exit-code-from integration-test integration-test; then
     echo "✓ Integration tests passed"
     TEST_STATUS="PASSED"
 else
