@@ -249,11 +249,113 @@ func (m *Migrator) getStateMigrationSteps() []MigrationStep {
 			StepType:    "migration",
 			Query:       "migrate_room_memberships", // Special migration identifier
 		},
+		{
+			Name:        "migrate_local_current_membership",
+			Description: "Migrate local current membership for room visibility",
+			StepType:    "migration",
+			Query:       "migrate_local_current_membership", // Special migration identifier
+		},
+		{
+			Name:        "migrate_state_groups",
+			Description: "Migrate state groups for proper state resolution",
+			StepType:    "migration",
+			Query:       "migrate_state_groups", // Special migration identifier
+		},
+		{
+			Name:        "migrate_event_to_state_groups",
+			Description: "Map events to state groups",
+			StepType:    "migration",
+			Query:       "migrate_event_to_state_groups", // Special migration identifier
+		},
 	}
 }
 
 func (m *Migrator) getAdvancedFeaturesSteps() []MigrationStep {
 	return []MigrationStep{
+		{
+			Name:        "migrate_profiles",
+			Description: "Migrate user profiles (display names and avatars)",
+			StepType:    "migration",
+			Query:       "migrate_profiles", // Special migration identifier
+		},
+		{
+			Name:        "migrate_cross_signing_keys",
+			Description: "Migrate cross-signing keys for device verification",
+			StepType:    "migration",
+			Query:       "migrate_cross_signing_keys", // Special migration identifier
+		},
+		{
+			Name:        "migrate_cross_signing_signatures",
+			Description: "Migrate cross-signing signatures",
+			StepType:    "migration",
+			Query:       "migrate_cross_signing_signatures", // Special migration identifier
+		},
+		{
+			Name:        "migrate_device_keys",
+			Description: "Migrate device encryption keys",
+			StepType:    "migration",
+			Query:       "migrate_device_keys", // Special migration identifier
+		},
+		{
+			Name:        "migrate_one_time_keys",
+			Description: "Migrate one-time encryption keys",
+			StepType:    "migration",
+			Query:       "migrate_one_time_keys", // Special migration identifier
+		},
+		{
+			Name:        "migrate_fallback_keys",
+			Description: "Migrate fallback encryption keys",
+			StepType:    "migration",
+			Query:       "migrate_fallback_keys", // Special migration identifier
+		},
+		{
+			Name:        "migrate_key_backup_versions",
+			Description: "Migrate key backup versions",
+			StepType:    "migration",
+			Query:       "migrate_key_backup_versions", // Special migration identifier
+		},
+		{
+			Name:        "migrate_key_backups",
+			Description: "Migrate encrypted key backup data",
+			StepType:    "migration",
+			Query:       "migrate_key_backups", // Special migration identifier
+		},
+		{
+			Name:        "migrate_account_data",
+			Description: "Migrate global account data",
+			StepType:    "migration",
+			Query:       "migrate_account_data", // Special migration identifier
+		},
+		{
+			Name:        "migrate_room_account_data",
+			Description: "Migrate room-specific account data",
+			StepType:    "migration",
+			Query:       "migrate_room_account_data", // Special migration identifier
+		},
+		{
+			Name:        "migrate_push_rules",
+			Description: "Migrate push rules from account data",
+			StepType:    "migration",
+			Query:       "migrate_push_rules", // Special migration identifier
+		},
+		{
+			Name:        "migrate_receipts",
+			Description: "Migrate read receipts",
+			StepType:    "migration",
+			Query:       "migrate_receipts", // Special migration identifier
+		},
+		{
+			Name:        "migrate_user_filters",
+			Description: "Migrate user sync filters",
+			StepType:    "migration",
+			Query:       "migrate_user_filters", // Special migration identifier
+		},
+		{
+			Name:        "migrate_pushers",
+			Description: "Migrate push notification configurations",
+			StepType:    "migration",
+			Query:       "migrate_pushers", // Special migration identifier
+		},
 		{
 			Name:        "update_sequences",
 			Description: "Update sequence generators",
@@ -274,32 +376,4 @@ func (m *Migrator) getAdvancedFeaturesSteps() []MigrationStep {
 			`,
 		},
 	}
-}
-
-// Helper function to create UDF-like functionality in Go
-func (m *Migrator) extractEventMetadata(eventJSON string) (map[string]interface{}, error) {
-	// This would be implemented to parse JSON and extract metadata
-	// For now, return empty map
-	return make(map[string]interface{}), nil
-}
-
-// Helper function to calculate topological ordering
-func (m *Migrator) calculateTopologicalOrdering(eventID, roomID string) (int64, error) {
-	// This would implement proper topological ordering calculation
-	// For now, return simple ordering
-	return 1, nil
-}
-
-// Helper function to build state groups
-func (m *Migrator) buildStateGroup(roomID, eventID string) (int64, error) {
-	// This would implement state group creation logic
-	// For now, return simple group ID
-	return 1, nil
-}
-
-// Helper function to convert auth events
-func (m *Migrator) convertAuthEvents(authEventNIDs []int64) ([]string, error) {
-	// This would convert NID arrays to event ID arrays
-	// For now, return empty array
-	return []string{}, nil
 }

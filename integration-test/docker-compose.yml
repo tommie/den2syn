@@ -67,6 +67,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      - SERVER_NAME=${SERVER_NAME:-test.local}
       - DENDRITE_DB_URL=postgres://matrix:matrix_password@postgres:5432/dendrite?sslmode=disable
       - SYNAPSE_DB_URL=postgres://matrix:matrix_password@postgres:5432/synapse?sslmode=disable
     command: ["postgres", "5432", "--", "./run-migration.sh"]

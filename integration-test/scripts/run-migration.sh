@@ -55,14 +55,14 @@ echo "=== Running Migration (Dry-run) ==="
 
 # First run in dry-run mode to verify everything works
 echo "Running dry-run migration..."
-./den2syn --verbose "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-dry-run.log"
+./den2syn --verbose --server-name "${SERVER_NAME:-test.local}" "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-dry-run.log"
 
 echo
 echo "=== Running Migration (Commit) ==="
 
 # Now run the actual migration
 echo "Running actual migration with --commit..."
-./den2syn --verbose --commit "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-commit.log"
+./den2syn --verbose --commit --server-name "${SERVER_NAME:-test.local}" "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-commit.log"
 
 echo
 echo "=== Post-migration Verification ==="
