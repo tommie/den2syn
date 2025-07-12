@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,12 +30,12 @@ func NewUDFManager(dendriteDB, synapseDB *sql.DB, verbose bool, log *logrus.Logg
 
 // EventMetadata represents extracted event metadata
 type EventMetadata struct {
-	Sender        string                 `json:"sender"`
-	Type          string                 `json:"type"`
-	StateKey      *string                `json:"state_key,omitempty"`
-	Content       map[string]interface{} `json:"content"`
-	OriginServerTS int64                 `json:"origin_server_ts"`
-	Membership    string                 `json:"membership,omitempty"`
+	Sender         string                 `json:"sender"`
+	Type           string                 `json:"type"`
+	StateKey       *string                `json:"state_key,omitempty"`
+	Content        map[string]interface{} `json:"content"`
+	OriginServerTS int64                  `json:"origin_server_ts"`
+	Membership     string                 `json:"membership,omitempty"`
 }
 
 // ExtractEventMetadata extracts structured metadata from Dendrite event JSON
@@ -69,7 +69,7 @@ func (u *UDFManager) ExtractEventMetadata(eventJSON string) (*EventMetadata, err
 	// Extract content
 	if content, ok := rawEvent["content"].(map[string]interface{}); ok {
 		metadata.Content = content
-		
+
 		// Extract membership if this is a membership event
 		if membership, ok := content["membership"].(string); ok {
 			metadata.Membership = membership
@@ -91,20 +91,20 @@ func (u *UDFManager) CalculateTopologicalOrdering(tx *sql.Tx, eventID, roomID st
 	// 1. Build the full event DAG for the room
 	// 2. Perform topological sort
 	// 3. Assign ordering values that respect causality
-	
+
 	query := `
 		SELECT depth 
 		FROM roomserver_events e
 		JOIN nid_room_mapping rm ON e.room_nid = rm.room_nid
 		WHERE e.event_id = $1 AND rm.room_id = $2
 	`
-	
+
 	var depth int64
 	err := tx.QueryRow(query, eventID, roomID).Scan(&depth)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get event depth: %w", err)
 	}
-	
+
 	// For now, use depth as a proxy for topological ordering
 	// This is not correct for all cases but provides a starting point
 	return depth, nil
@@ -118,20 +118,20 @@ func (u *UDFManager) BuildStateGroup(tx *sql.Tx, roomID, eventID string) (int64,
 	// 2. Check if an existing state group has the same state
 	// 3. Create new state group if needed
 	// 4. Handle state group edges for efficient storage
-	
+
 	// For now, create a simple mapping based on room and some hash
 	query := `
 		SELECT COUNT(*) + 1 
 		FROM state_groups 
 		WHERE room_id = $1
 	`
-	
+
 	var stateGroupID int64
 	err := tx.QueryRow(query, roomID).Scan(&stateGroupID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to calculate state group ID: %w", err)
 	}
-	
+
 	return stateGroupID, nil
 }
 
@@ -140,7 +140,7 @@ func (u *UDFManager) ConvertAuthEvents(tx *sql.Tx, authEventNIDs []int64) ([]str
 	if len(authEventNIDs) == 0 {
 		return []string{}, nil
 	}
-	
+
 	// Build placeholders for the query
 	placeholders := make([]string, len(authEventNIDs))
 	args := make([]interface{}, len(authEventNIDs))
@@ -148,20 +148,20 @@ func (u *UDFManager) ConvertAuthEvents(tx *sql.Tx, authEventNIDs []int64) ([]str
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = nid
 	}
-	
+
 	query := fmt.Sprintf(`
 		SELECT event_id 
 		FROM nid_event_mapping 
 		WHERE event_nid IN (%s)
 		ORDER BY event_nid
 	`, strings.Join(placeholders, ","))
-	
+
 	rows, err := tx.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query auth events: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var eventIDs []string
 	for rows.Next() {
 		var eventID string
@@ -170,11 +170,11 @@ func (u *UDFManager) ConvertAuthEvents(tx *sql.Tx, authEventNIDs []int64) ([]str
 		}
 		eventIDs = append(eventIDs, eventID)
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating auth events: %w", err)
 	}
-	
+
 	return eventIDs, nil
 }
 
@@ -230,9 +230,9 @@ func (r *NIDResolver) ResolveStateKeyNID(stateKeyNID int64) (string, error) {
 
 // EventDAG represents the directed acyclic graph of events in a room
 type EventDAG struct {
-	events    map[string]*DAGEvent
-	roots     []string
-	roomID    string
+	events map[string]*DAGEvent
+	roots  []string
+	roomID string
 }
 
 // DAGEvent represents an event in the DAG
@@ -250,7 +250,7 @@ func (u *UDFManager) BuildEventDAG(tx *sql.Tx, roomID string) (*EventDAG, error)
 		events: make(map[string]*DAGEvent),
 		roomID: roomID,
 	}
-	
+
 	// Query all events in the room with their relationships
 	query := `
 		SELECT 
@@ -267,23 +267,23 @@ func (u *UDFManager) BuildEventDAG(tx *sql.Tx, roomID string) (*EventDAG, error)
 		GROUP BY e.event_id, e.depth
 		ORDER BY e.depth
 	`
-	
+
 	rows, err := tx.Query(query, roomID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query room events: %w", err)
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		var eventID string
 		var depth int64
 		var prevEvents, authEvents []string
-		
+
 		err := rows.Scan(&eventID, &depth, &prevEvents, &authEvents)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
-		
+
 		event := &DAGEvent{
 			EventID:    eventID,
 			Depth:      depth,
@@ -291,14 +291,14 @@ func (u *UDFManager) BuildEventDAG(tx *sql.Tx, roomID string) (*EventDAG, error)
 			AuthEvents: authEvents,
 			Children:   make([]string, 0),
 		}
-		
+
 		dag.events[eventID] = event
-		
+
 		// Track roots (events with no previous events)
 		if len(prevEvents) == 0 {
 			dag.roots = append(dag.roots, eventID)
 		}
-		
+
 		// Build children relationships
 		for _, prevEventID := range prevEvents {
 			if prevEvent, exists := dag.events[prevEventID]; exists {
@@ -306,11 +306,11 @@ func (u *UDFManager) BuildEventDAG(tx *sql.Tx, roomID string) (*EventDAG, error)
 			}
 		}
 	}
-	
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating events: %w", err)
 	}
-	
+
 	return dag, nil
 }
 
@@ -319,16 +319,16 @@ func (dag *EventDAG) ComputeTopologicalOrdering() map[string]int64 {
 	ordering := make(map[string]int64)
 	visited := make(map[string]bool)
 	order := int64(1)
-	
+
 	// Depth-first traversal starting from roots
 	var visit func(string)
 	visit = func(eventID string) {
 		if visited[eventID] {
 			return
 		}
-		
+
 		visited[eventID] = true
-		
+
 		// Visit all dependencies first (prev events and auth events)
 		event := dag.events[eventID]
 		for _, prevEventID := range event.PrevEvents {
@@ -336,33 +336,33 @@ func (dag *EventDAG) ComputeTopologicalOrdering() map[string]int64 {
 				visit(prevEventID)
 			}
 		}
-		
+
 		for _, authEventID := range event.AuthEvents {
 			if _, exists := dag.events[authEventID]; exists {
 				visit(authEventID)
 			}
 		}
-		
+
 		// Assign ordering after dependencies
 		ordering[eventID] = order
 		order++
 	}
-	
+
 	// Start from root events and traverse
 	sortedRoots := make([]string, len(dag.roots))
 	copy(sortedRoots, dag.roots)
 	sort.Strings(sortedRoots) // Deterministic ordering
-	
+
 	for _, rootEventID := range sortedRoots {
 		visit(rootEventID)
 	}
-	
+
 	// Handle any remaining unvisited events (shouldn't happen in a valid DAG)
 	for eventID := range dag.events {
 		if !visited[eventID] {
 			visit(eventID)
 		}
 	}
-	
+
 	return ordering
 }
