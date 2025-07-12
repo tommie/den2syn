@@ -96,6 +96,11 @@ services:
       - sh
       - -ec
       - |
+        if ! grep -q Access-Control-Allow-Private-Network /usr/local/lib/python3.12/site-packages/synapse/http/server.py; then
+          echo 'Patching Access-Control-Allow-Private-Network...'
+          sed -i 's|request.setHeader(b"Access-Control-Allow-Origin", b"\*")|\0\n    request.setHeader(b"Access-Control-Allow-Private-Network", b"true")|' /usr/local/lib/python3.12/site-packages/synapse/http/server.py
+        fi
+        rm -f /data/homeserver.yaml
         if [ ! -f /data/homeserver.yaml ]; then
           echo 'Generating Synapse config...'
           python -m synapse.app.homeserver \
@@ -109,8 +114,12 @@ services:
           sed -i 's|database: /data/homeserver.db|database: synapse\n    user: matrix\n    password: matrix_password\n    host: postgres\n    port: 5432\n    cp_min: 5\n    cp_max: 10|' /data/homeserver.yaml
           echo 'Patching bind addresses to listen on all interfaces...'
           sed -i 's/bind_addresses: \[.*\]/bind_addresses: ["0.0.0.0"]/' /data/homeserver.yaml
+          echo 'Setting public base URL...'
+          echo >>/data/homeserver.yaml
+          echo 'public_baseurl: http://localhost:8008/' >>/data/homeserver.yaml
           echo 'Patching log config for console output...'
           sed -i 's/handlers: \[buffer\]/handlers: [console]/' /data/${SERVER_NAME:-test.local}.log.config
+          sed -i 's/level: INFO/level: DEBUG/' /data/${SERVER_NAME:-test.local}.log.config
         fi
         echo 'Updating Synapse database schema...'
         update_synapse_database --database-config /data/homeserver.yaml --run-background-updates
