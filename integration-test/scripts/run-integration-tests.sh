@@ -172,7 +172,7 @@ echo "Searching for invalid user ID formats across all tables..."
 echo "Checking for user localparts without @ prefix..."
 if [ -n "$SAMPLE_LOCALPARTS" ]; then
     LOCALPARTS=${SAMPLE_LOCALPARTS//,/|}
-    INVALID_USER_IDS=$(grep -v public.user_directory_search /tmp/synapse_full_dump.sql | grep -E "($LOCALPARTS)" | grep -Ev "@($LOCALPARTS):${SERVER_NAME//./\\.}" || :)
+    INVALID_USER_IDS=$(grep -v public.user_directory_search /tmp/synapse_full_dump.sql | grep -E "['\"]($LOCALPARTS)['\"]" | grep -Ev "\"reason\":\\s*\"($LOCALPARTS)\"" || :)
 
     if [ -z "$INVALID_USER_IDS" ]; then
         echo "✓ No user localparts found without @ prefix"
