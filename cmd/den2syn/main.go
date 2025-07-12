@@ -1057,8 +1057,8 @@ func (m *Migrator) migrateEvents(tx *sql.Tx) error {
 		FROM roomserver_events e
 		JOIN roomserver_rooms rooms ON e.room_nid = rooms.room_nid
 		JOIN roomserver_event_types etypes ON e.event_type_nid = etypes.event_type_nid
-		JOIN roomserver_event_state_keys skeys ON e.event_state_key_nid = skeys.event_state_key_nid
-		JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid
+		LEFT JOIN roomserver_event_state_keys skeys ON e.event_state_key_nid = skeys.event_state_key_nid
+		LEFT JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid
 		ORDER BY e.event_nid
 	`)
 	if err != nil {

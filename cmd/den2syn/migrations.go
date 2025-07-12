@@ -39,10 +39,10 @@ func (m *Migrator) getPreparationSteps() []MigrationStep {
 			Description: "List all available tables for debugging",
 			StepType:    "dendrite_query",
 			Query: `
-				SELECT 
-					schemaname, 
+				SELECT
+					schemaname,
 					tablename
-				FROM pg_tables 
+				FROM pg_tables
 				ORDER BY schemaname, tablename;
 			`,
 		},
@@ -51,15 +51,53 @@ func (m *Migrator) getPreparationSteps() []MigrationStep {
 			Description: "Check for required Dendrite tables",
 			StepType:    "dendrite_query",
 			Query: `
-				SELECT 
+				SELECT
 					tablename as found_table,
 					'Table exists: ' || tablename as status
-				FROM pg_tables 
+				FROM pg_tables
 				WHERE tablename IN (
 					'roomserver_events', 'roomserver_event_json', 'roomserver_rooms',
 					'userapi_accounts', 'userapi_devices', 'syncapi_output_room_events'
 				)
 				ORDER BY tablename;
+			`,
+		},
+		{
+			Name:        "analyze_event_coverage",
+			Description: "Check event coverage and missing event_json",
+			StepType:    "dendrite_query",
+			Query: `
+				SELECT
+					'Total events' as metric,
+					COUNT(*) as count
+				FROM roomserver_events
+				UNION ALL
+				SELECT
+					'Events with rooms' as metric,
+					COUNT(*)
+				FROM roomserver_events e
+				JOIN roomserver_rooms rooms ON e.room_nid = rooms.room_nid
+				UNION ALL
+				SELECT
+					'Events with types' as metric,
+					COUNT(*)
+				FROM roomserver_events e
+				JOIN roomserver_event_types etypes ON e.event_type_nid = etypes.event_type_nid
+				UNION ALL
+				SELECT
+					'Events with JSON' as metric,
+					COUNT(*)
+				FROM roomserver_events e
+				JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid
+				UNION ALL
+				SELECT
+					'Events with all joins' as metric,
+					COUNT(*)
+				FROM roomserver_events e
+				JOIN roomserver_rooms rooms ON e.room_nid = rooms.room_nid
+				JOIN roomserver_event_types etypes ON e.event_type_nid = etypes.event_type_nid
+				LEFT JOIN roomserver_event_state_keys skeys ON e.event_state_key_nid = skeys.event_state_key_nid
+				LEFT JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid;
 			`,
 		},
 		{
@@ -69,15 +107,15 @@ func (m *Migrator) getPreparationSteps() []MigrationStep {
 			Query: `
 				WITH required_count AS (
 					SELECT COUNT(*) as found_tables
-					FROM pg_tables 
+					FROM pg_tables
 					WHERE tablename IN (
 						'roomserver_events', 'roomserver_event_json', 'roomserver_rooms',
 						'userapi_accounts', 'userapi_devices', 'syncapi_output_room_events'
 					)
 				)
-				SELECT 
+				SELECT
 					found_tables,
-					CASE 
+					CASE
 						WHEN found_tables = 6 THEN 'SUCCESS: All 6 required tables found'
 						ELSE 'ERROR: Only ' || found_tables || ' of 6 required tables found'
 					END as validation_result
@@ -89,11 +127,11 @@ func (m *Migrator) getPreparationSteps() []MigrationStep {
 			Description: "Check data integrity",
 			StepType:    "dendrite_query",
 			Query: `
-				SELECT 
+				SELECT
 					COUNT(*) as orphaned_events,
 					'Orphaned events (events without JSON)' as description
-				FROM roomserver_events e 
-				LEFT JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid 
+				FROM roomserver_events e
+				LEFT JOIN roomserver_event_json ej ON e.event_nid = ej.event_nid
 				WHERE ej.event_nid IS NULL;
 			`,
 		},
@@ -223,13 +261,13 @@ func (m *Migrator) getAdvancedFeaturesSteps() []MigrationStep {
 			Query: `
 				-- Update sequence generators to continue from Dendrite's highest values
 				SELECT setval(
-					'events_stream_seq', 
+					'events_stream_seq',
 					COALESCE((SELECT MAX(stream_ordering) FROM events), 1)
 				);
 
 				-- Update stream positions table
 				INSERT INTO stream_positions (stream_name, instance_name, stream_id)
-				VALUES 
+				VALUES
 					('events', 'master', (SELECT COALESCE(MAX(stream_ordering), 1) FROM events))
 				ON CONFLICT (stream_name, instance_name) DO UPDATE SET
 					stream_id = EXCLUDED.stream_id;
