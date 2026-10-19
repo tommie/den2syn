@@ -94,9 +94,16 @@ The migration only reads Dendrite's database and media, so Dendrite stays intact
 
 ### On the day
 
-1. **Stop Dendrite**, so nothing changes during the migration.
+1. **Have everyone open their Matrix apps** shortly before, so their devices sync everything (see step 6).
 
-2. **Migrate**, in the Synapse image, with the config, signing key and media store mounted where `homeserver.yaml` says, and Dendrite's media read-only:
+2. **Stop Dendrite**, so nothing changes during the migration.
+   Then list the devices that may not have synced every event:
+
+   ```bash
+   psql -f scripts/dendrite_unsynced_devices.sql 'postgres://dendrite:...@db/dendrite'
+   ```
+
+3. **Migrate**, in the Synapse image, with the config, signing key and media store mounted where `homeserver.yaml` says, and Dendrite's media read-only:
 
    ```bash
    docker run --rm -v "$PWD":/den2syn:ro -w /den2syn \
@@ -110,20 +117,23 @@ The migration only reads Dendrite's database and media, so Dendrite stays intact
    Run it as the user Synapse runs as (the image's default is UID 991), so it owns the media files.
    On failure, fix the cause, recreate the Synapse database, empty the media store, and run again.
 
-3. **Start Synapse**, and check it with the client test:
+4. **Start Synapse**, and check it with the client test:
 
    ```bash
    python -m tests.client_test --synapse http://synapse:8008 \
        --dendrite-db 'postgres://dendrite:...@db/dendrite' --dendrite-media /dendrite-media
    ```
 
-4. **Point the reverse proxy at Synapse**: `/_matrix` and `/_synapse/client` to its listener, for both client and federation traffic (or port 8448, as Dendrite had it).
+5. **Point the reverse proxy at Synapse**: `/_matrix` and `/_synapse/client` to its listener, for both client and federation traffic (or port 8448, as Dendrite had it).
 
-5. **Have every user clear their client's cache**, e.g. Element's "Clear cache and reload" under Settings → Help & About.
+6. **Have users clear the cache of devices listed in step 2** that are still in use, e.g. Element's "Clear cache and reload" under Settings → Help & About.
    They stay logged in, with the same devices and keys.
-   Clients keep their Dendrite sync token, which Synapse accepts but reads differently: the first sync returns nothing, and later syncs continue from Synapse's position.
+   Clients keep their Dendrite sync token, which Synapse accepts but reads differently: Dendrite's room position is ahead of Synapse's, so Synapse lowers it to its current position.
    Messages a device hadn't synced before the cutover then never appear in its timeline, which it doesn't know has a gap.
    Clearing the cache makes the client do a full sync.
+   Devices that had synced everything lose nothing, so they don't need it.
+   The script errs towards listing devices: Dendrite updates a device's last seen time at most once a minute.
+   An abandoned device that's listed only has the gap if it's ever used again; clearing its cache then fixes it.
    Waiting to-device messages (e.g. room keys) aren't affected: den2syn makes sure old tokens can't acknowledge them.
 
 ### Rolling back
