@@ -46,14 +46,25 @@ if [ -n "${DENDRITE_MEDIA:-}" ] && psql_ -d dendrite -Atc "SELECT to_regclass('d
     psql_ -d postgres -c "DROP DATABASE dendrite"
 fi
 
+# Identifies the dump, so a new one (e.g. dendrite.dump pointing elsewhere) is
+# loaded instead of silently migrating the old one.
+DUMP_ID="$(readlink -f "$DUMP") $(stat -c '%s %Y' "$DUMP")"
+LOADED_ID=$(psql_ -d dendrite -Atc "SELECT id FROM den2syn_dev_dump" 2>/dev/null || true)
+if psql_ -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = 'dendrite'" | grep -q 1 && [ "$LOADED_ID" != "$DUMP_ID" ]; then
+    echo "Dropping the Dendrite database, which has another or unknown dump..."
+    psql_ -d postgres -c "DROP DATABASE dendrite"
+fi
+
 if ! psql_ -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = 'dendrite'" | grep -q 1; then
-    echo "Loading the Dendrite dump..."
+    echo "Loading the Dendrite dump $(readlink -f "$DUMP")..."
     # The dump refers to its original owner.
     if ! psql_ -d postgres -Atc "SELECT 1 FROM pg_roles WHERE rolname = 'dendrite'" | grep -q 1; then
         psql_ -d postgres -c "CREATE ROLE dendrite"
     fi
     psql_ -d postgres -c "CREATE DATABASE dendrite"
     psql_ -d dendrite < "$DUMP"
+    # psql only substitutes variables in scripts, not -c.
+    echo "CREATE TABLE den2syn_dev_dump AS SELECT :'id'::text AS id" | psql_ -d dendrite -v id="$DUMP_ID"
 fi
 
 echo "Recreating the Synapse database..."
