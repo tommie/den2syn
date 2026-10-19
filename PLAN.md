@@ -6,13 +6,13 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **Dev loop**: one command that recreates a scratch Synapse database and runs den2syn against the loaded Dendrite dump.
 - [x] **users**: `users`, `profiles`, `devices`, `access_tokens`, `user_ips`, `user_threepids`, `registration_tokens`.
 - [x] **account_data**: `account_data`, `room_account_data`, `room_tags` (from `m.tag`), `push_rules` and `push_rules_enable` (from `m.push_rules`), `user_filters`.
-- [ ] **e2e_keys**: device keys, one-time keys, cross-signing keys and signatures, key backup versions and contents.
+- [x] **e2e_keys**: device keys, one-time keys, cross-signing keys and signatures, key backup versions and contents.
 - [ ] **rooms**: `rooms`, state groups from Dendrite's snapshots, events through `persist_events`, aliases, forgotten rooms, published rooms.
   Prototype on one room first.
 - [ ] **receipts**: needs event stream orderings.
 - [ ] **pushers**: start at the last migrated stream ordering.
 - [ ] **to_device**: undelivered to-device messages for migrated devices.
 - [ ] **media**: copy local media files, store metadata, generate thumbnails with Synapse's thumbnailer.
-- [ ] **finalize**: move `federation_stream_position` past migrated events; announce local devices with `add_device_change_to_streams`.
+- [ ] **finalize**: move `federation_stream_position` past migrated events.
 - [ ] **Client-level integration test**: log in with a migrated token, sync, read room history, restore the key backup and decrypt a message.
 - [ ] **Cutover runbook**: fresh Dendrite dump, Dendrite's signing key as Synapse's (or in `old_signing_keys`), media store paths, reverse proxy and `.well-known`, what clients must do (clear cache, or log in again).

@@ -65,6 +65,7 @@ _PERSIST = ("EventsPersistenceStorageController.persist_events",)
 _PERSISTED = "Written by Synapse when den2syn persists the room's events."
 _STATS = ("background update populate_stats_*, re-run by den2syn after migrating",)
 _USER_DIR = ("background update populate_user_directory_*, re-run by den2syn after migrating",)
+_DEVICE_UPDATES = ("DeviceHandler.notify_device_update", "E2eKeysHandler.upload_keys_for_user")
 _NO_APPSERVICES = "No application services are migrated; they are re-registered through Synapse config."
 _TRANSIENT = "Short-lived state; clients start new flows after migration."
 _FEDERATION_CACHE = "Federation state that Synapse rebuilds as it talks to other servers."
@@ -113,49 +114,53 @@ STORIES: dict[str, Story] = {
         "them would make recent messages undecryptable."),
     "device_lists_changes_converted_stream_position": synapse("Singleton stream position."),
     "device_lists_changes_in_room": derived(
-        ("DeviceWorkerStore.add_device_change_to_streams",),
-        "Written when den2syn announces each local user's devices."),
+        _DEVICE_UPDATES,
+        "Expected empty: keys are uploaded before rooms exist. Other servers in shared rooms already "
+        "have these device lists from Dendrite."),
     "device_lists_changes_in_room_max_pruned_stream_id": synapse("Singleton stream position."),
     "device_lists_outbound_last_success": derived(
         ("FederationSender",), "Written as device list updates reach other servers."),
     "device_lists_outbound_pokes": derived(
-        ("DeviceWorkerStore.add_device_change_to_streams",),
-        "Device list updates queued for other servers in shared rooms."),
+        _DEVICE_UPDATES,
+        "Expected empty: keys are uploaded before rooms exist. Other servers in shared rooms already "
+        "have these device lists from Dendrite."),
     "device_lists_remote_cache": empty("Remote device lists are fetched again from their servers."),
     "device_lists_remote_extremeties": empty("Remote device lists are fetched again from their servers."),
     "device_lists_remote_pending": empty("Remote device lists are fetched again from their servers."),
     "device_lists_remote_resync": empty("Remote device lists are fetched again from their servers."),
     "device_lists_stream": derived(
-        ("DeviceWorkerStore.add_device_change_to_streams",),
-        "den2syn announces every local user's devices after migration so clients re-query keys."),
+        _DEVICE_UPDATES, "Written as device and cross-signing keys are uploaded."),
     "devices": migrated(
         "users", ("userapi_devices",), ("DeviceStore.store_device", "DatabasePool.simple_update_one"),
-        "Device ID and display name. Last seen IP, user agent and timestamp are updated directly."),
+        "Device ID and display name. Last seen IP, user agent and timestamp are updated directly. "
+        "Synapse also stores each cross-signing key as a hidden device."),
     "e2e_cross_signing_keys": migrated(
-        "e2e_keys", ("keyserver_cross_signing_keys",), ("EndToEndKeyStore.set_e2e_cross_signing_key",),
-        "Master, self-signing and user-signing public keys."),
+        "e2e_keys", ("keyserver_cross_signing_keys", "keyserver_cross_signing_sigs"),
+        ("E2eKeysHandler.upload_signing_keys_for_user",),
+        "Master, self-signing and user-signing keys. Dendrite stores only the public keys, so the JSON "
+        "is rebuilt, with the master key's signatures on the other two from Dendrite's signature table."),
     "e2e_cross_signing_signatures": migrated(
         "e2e_keys", ("keyserver_cross_signing_sigs",),
-        ("EndToEndKeyStore.store_e2e_cross_signing_signatures",),
-        "Signatures made by a user's cross-signing keys on their own devices and other users' keys."),
+        ("E2eKeysHandler.upload_signatures_for_device_keys",),
+        "Uploaded one at a time, letting Synapse verify them. Dendrite's table also has signatures by "
+        "and on replaced keys and deleted devices, which Synapse rejects; they're logged and dropped."),
     "e2e_device_keys_json": migrated(
-        "e2e_keys", ("keyserver_device_keys",), ("EndToEndKeyStore.set_e2e_device_keys",),
-        "Device identity keys; without them, other devices can't encrypt to migrated devices."),
+        "e2e_keys", ("keyserver_device_keys",), ("E2eKeysHandler.upload_keys_for_user",),
+        "Device identity keys of migrated devices; without them, other devices can't encrypt to them."),
     "e2e_fallback_keys_json": empty(
         "Dendrite doesn't store fallback keys; clients upload new ones when "
         "device_unused_fallback_key_types shows none."),
     "e2e_one_time_keys_json": migrated(
-        "e2e_keys", ("keyserver_one_time_keys",), ("EndToEndKeyStore.add_e2e_one_time_keys",),
+        "e2e_keys", ("keyserver_one_time_keys",), ("E2eKeysHandler.upload_keys_for_user",),
         "Unclaimed one-time keys, so other devices can start Olm sessions."),
     "e2e_room_keys": migrated(
         "e2e_keys", ("userapi_key_backups",), ("EndToEndRoomKeyStore.add_e2e_room_keys",),
         "Server-side key backup contents."),
     "e2e_room_keys_versions": migrated(
         "e2e_keys", ("userapi_key_backup_versions",),
-        ("EndToEndRoomKeyStore.create_e2e_room_keys_version",
-         "EndToEndRoomKeyStore.update_e2e_room_keys_version",
-         "EndToEndRoomKeyStore.delete_e2e_room_keys_version"),
-        "Versions are created in order, and deleted ones deleted, so version numbers match Dendrite's."),
+        ("DatabasePool.simple_insert",),
+        "Inserted directly, because create_e2e_room_keys_version numbers versions per user, while "
+        "Dendrite numbers them globally, and clients remember the version they back up to."),
     "erased_users": empty("GDPR erasure is a Synapse-only feature."),
     "event_auth": derived(_PERSIST, _PERSISTED),
     "event_auth_chain_links": derived(_PERSIST, _PERSISTED),
@@ -332,8 +337,9 @@ STORIES: dict[str, Story] = {
         "users", ("userapi_devices",), ("DatabasePool.simple_upsert",),
         "Last seen IP and user agent per device. Synapse's own writer batches live requests."),
     "user_reports": empty("Abuse reports aren't carried over."),
-    "user_signature_stream": empty(
-        "Only notifies about new signatures; clients do a fresh key query after migration."),
+    "user_signature_stream": derived(
+        ("E2eKeysHandler.upload_signing_keys_for_user", "E2eKeysHandler.upload_signatures_for_device_keys"),
+        "Written as cross-signing keys and signatures are uploaded."),
     "user_stats_current": derived(_STATS, "Built from the migrated rooms and users."),
     "user_threepid_id_server": empty("Dendrite doesn't record identity server bindings."),
     "user_threepids": migrated(
