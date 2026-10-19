@@ -8,10 +8,16 @@ Run inside the den2syn image, against a running Synapse:
     python -m tests.client_test --synapse http://synapse:8008 \\
         --dendrite-db "host=... dbname=dendrite" --dendrite-media /dendrite-media
 
+If PASSWORD_<localpart> is set (e.g. PASSWORD_tommie), that user also logs in
+with the password, which checks that Dendrite's password hash works in
+Synapse. The new session is logged out again.
+
 If RECOVERY_KEY_<localpart> is set (e.g. RECOVERY_KEY_tommie), that user's key
 backup is also decrypted: one room key is decrypted with the recovery key,
-and its session ID checked against the encrypted messages in its room. The
-recovery key is only read from the environment, never stored or logged.
+and its session ID checked against the encrypted messages in its room.
+
+Passwords and recovery keys are only read from the environment, never stored
+or logged.
 """
 
 import argparse
@@ -36,16 +42,19 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
 class Client:
-    def __init__(self, base_url: str, token: str) -> None:
+    def __init__(self, base_url: str, token: str | None) -> None:
         self.base_url = base_url
         self.token = token
 
     def request(self, method: str, path: str, body: Any = None, raw: bool = False) -> Any:
+        headers = {"Content-Type": "application/json"}
+        if self.token is not None:
+            headers["Authorization"] = f"Bearer {self.token}"
         req = urllib.request.Request(
             self.base_url + path,
             method=method,
             data=None if body is None else json.dumps(body).encode(),
-            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+            headers=headers,
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
@@ -93,6 +102,12 @@ def check_user(checks: Checks, conn: Any, synapse: str, media: pathlib.Path, use
     # 1. The migrated access token logs in as the right user and device.
     whoami = client.get("/_matrix/client/v3/account/whoami")
     checks.equal(f"{user_id}: whoami", (user_id, device_id), (whoami["user_id"], whoami.get("device_id")))
+
+    password = os.environ.get("PASSWORD_" + user["localpart"])
+    if password:
+        check_password_login(checks, synapse, user, password)
+    else:
+        print(f"skip  {user_id}: password login (no PASSWORD_{user['localpart']})")
 
     # 2. Joined rooms match Dendrite's current membership.
     want_rooms = {
@@ -187,6 +202,25 @@ def check_user(checks: Checks, conn: Any, synapse: str, media: pathlib.Path, use
         checks.true(f"{user_id}: avatar thumbnail", len(thumb) > 0)
 
 
+def check_password_login(checks: Checks, synapse: str, user: dict[str, Any], password: str) -> None:
+    """Logs in with the password from Dendrite's hash, then logs that session out."""
+
+    user_id = user["user_id"]
+    try:
+        login = Client(synapse, None).request("POST", "/_matrix/client/v3/login", {
+            "type": "m.login.password",
+            "identifier": {"type": "m.id.user", "user": user["localpart"]},
+            "password": password,
+            "initial_device_display_name": "den2syn client test",
+        })
+    except urllib.error.HTTPError as e:
+        checks.true(f"{user_id}: password login", False, f"HTTP {e.code}: {e.read()[:200]!r}")
+        return
+    checks.equal(f"{user_id}: password login", user_id, login["user_id"])
+    # Don't leave a device behind.
+    Client(synapse, login["access_token"]).request("POST", "/_matrix/client/v3/logout", {})
+
+
 _BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
@@ -228,15 +262,81 @@ def decrypt_backup_session(private_key: bytes, session_data: dict[str, str]) -> 
     return json.loads(unpadder.update(padded) + unpadder.finalize())
 
 
+def backup_public_key(private_key: bytes) -> str:
+    return base64.b64encode(
+        X25519PrivateKey.from_private_bytes(private_key).public_key().public_bytes_raw()).decode().rstrip("=")
+
+
+def _b64decode(s: str) -> bytes:
+    return base64.b64decode(s + "=" * (-len(s) % 4))
+
+
+def secret_storage_decrypt(key: bytes, name: str, encrypted: dict[str, str]) -> bytes:
+    """Decrypts an m.secret_storage.v1.aes-hmac-sha2 secret (spec: Secret storage)."""
+
+    okm = HKDF(algorithm=hashes.SHA256(), length=64, salt=bytes(32), info=name.encode()).derive(key)
+    aes_key, mac_key = okm[:32], okm[32:]
+    ciphertext = _b64decode(encrypted["ciphertext"])
+    mac = hmac.new(mac_key, ciphertext, hashlib.sha256).digest()
+    if not hmac.compare_digest(mac, _b64decode(encrypted["mac"])):
+        raise ValueError(f"secret storage MAC mismatch for {name or 'the key check'}")
+    decryptor = Cipher(algorithms.AES(aes_key), modes.CTR(_b64decode(encrypted["iv"]))).decryptor()
+    return decryptor.update(ciphertext) + decryptor.finalize()
+
+
+def check_secret_storage_key(key: bytes, description: dict[str, str]) -> bool:
+    """Returns whether a key belongs to a secret storage key description.
+
+    The description holds the MAC of 32 zero bytes, encrypted with the
+    description's IV and an empty secret name, but not the ciphertext.
+    """
+
+    okm = HKDF(algorithm=hashes.SHA256(), length=64, salt=bytes(32), info=b"").derive(key)
+    encryptor = Cipher(algorithms.AES(okm[:32]), modes.CTR(_b64decode(description["iv"]))).encryptor()
+    ciphertext = encryptor.update(bytes(32)) + encryptor.finalize()
+    mac = hmac.new(okm[32:], ciphertext, hashlib.sha256).digest()
+    return hmac.compare_digest(mac, _b64decode(description["mac"]))
+
+
+def backup_key_from_secret_storage(checks: Checks, client: Client, user_id: str, key: bytes) -> bytes | None:
+    """Returns the backup key held in secret storage, using a secret storage key."""
+
+    def account_data(typ: str) -> dict[str, Any]:
+        return client.get(f"/_matrix/client/v3/user/{quote(user_id)}/account_data/{quote(typ)}")
+
+    encrypted = account_data("m.megolm_backup.v1").get("encrypted", {})
+    for key_id, secret in sorted(encrypted.items()):
+        description = account_data(f"m.secret_storage.key.{key_id}")
+        if description.get("algorithm") != "m.secret_storage.v1.aes-hmac-sha2":
+            continue
+        if not check_secret_storage_key(key, description):
+            continue
+        print(f"ok    {user_id}: recovery key is secret storage key {key_id}")
+        return _b64decode(secret_storage_decrypt(key, "m.megolm_backup.v1", secret).decode())
+
+    checks.true(f"{user_id}: recovery key is the backup key or a secret storage key holding it", False,
+                f"secret storage keys holding the backup key: {sorted(encrypted)}")
+    return None
+
+
 def check_backup_decryption(
     checks: Checks, client: Client, conn: Any, user_id: str, version: dict[str, Any], recovery_key: str
 ) -> None:
-    private_key = decode_recovery_key(recovery_key)
-    public_key = base64.b64encode(
-        X25519PrivateKey.from_private_bytes(private_key).public_key().public_bytes_raw()).decode().rstrip("=")
-    checks.equal(f"{user_id}: recovery key matches the backup", version["auth_data"]["public_key"], public_key)
-    if version["auth_data"]["public_key"] != public_key:
-        return
+    key = decode_recovery_key(recovery_key)
+    want_public_key = version["auth_data"]["public_key"]
+    if backup_public_key(key) == want_public_key:
+        print(f"ok    {user_id}: recovery key is the backup key")
+        private_key = key
+    else:
+        # Clients since secret storage (MSC1946) give users a key for secret
+        # storage instead, which holds the backup key.
+        private_key = backup_key_from_secret_storage(checks, client, user_id, key)
+        if private_key is None:
+            return
+        checks.equal(f"{user_id}: backup key from secret storage matches the backup",
+                     want_public_key, backup_public_key(private_key))
+        if backup_public_key(private_key) != want_public_key:
+            return
 
     backup = client.get(f"/_matrix/client/v3/room_keys/keys", version=version["version"])
     for room_id, room in sorted(backup["rooms"].items()):

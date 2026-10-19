@@ -149,6 +149,8 @@ services:
       # Optional, e.g. RECOVERY_KEY_alice, to also decrypt that user's key
       # backup. Only passed through from the environment.
       - RECOVERY_KEY_${RECOVERY_KEY_USER:-unset}
+      # Optional, e.g. PASSWORD_alice, to also test password login.
+      - PASSWORD_${PASSWORD_USER:-unset}
     volumes:
       - ./dendrite-dumps/media:/dendrite-media:ro
       - test_results:/test-results

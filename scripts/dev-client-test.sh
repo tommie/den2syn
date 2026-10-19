@@ -4,7 +4,7 @@
 # Starts Synapse on the database scripts/dev-migrate.sh migrated into, runs
 # tests/client_test.py, and stops Synapse again.
 #
-# Usage: [DENDRITE_MEDIA=<dir>] [RECOVERY_KEY_<localpart>=...] scripts/dev-client-test.sh
+# Usage: [DENDRITE_MEDIA=<dir>] [PASSWORD_<localpart>=...] [RECOVERY_KEY_<localpart>=...] scripts/dev-client-test.sh
 # DENDRITE_MEDIA must be what dev-migrate.sh used.
 
 set -euo pipefail
@@ -24,10 +24,10 @@ docker run -d --rm --name "$SYNAPSE" --user "$(id -u):$(id -g)" --network "$NETW
 trap 'docker stop "$SYNAPSE" >/dev/null' EXIT
 until docker exec "$SYNAPSE" curl -sf http://localhost:8008/health >/dev/null 2>&1; do sleep 1; done
 
-# Pass through recovery keys by name only, so they don't end up in the
-# command line.
+# Pass through passwords and recovery keys by name only, so they don't end up
+# in the command line.
 env_args=()
-for name in $(compgen -e | grep '^RECOVERY_KEY_' || true); do
+for name in $(compgen -e | grep -E '^(PASSWORD|RECOVERY_KEY)_' || true); do
     env_args+=(-e "$name")
 done
 

@@ -68,5 +68,6 @@ SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
 
 The client test (`tests/client_test.py`) logs in as each local user with their most recently used Dendrite access token, and checks joined rooms, room history, device and cross-signing keys, the key backup, and avatar media against Dendrite's database.
+Setting `PASSWORD_<localpart>` also logs in with that password, checking that Dendrite's password hash works in Synapse.
 Setting `RECOVERY_KEY_<localpart>` also decrypts room keys from that user's backup and checks them against encrypted messages.
-Recovery keys are only read from the environment; in the integration test, also set `RECOVERY_KEY_USER=<localpart>`.
+These are only read from the environment; in the integration test, also set `PASSWORD_USER=<localpart>` or `RECOVERY_KEY_USER=<localpart>`.
