@@ -48,7 +48,7 @@ Synapse requires PostgreSQL 14 or later.
 ## Status
 
 All 176 Synapse tables have stories.
-See [PLAN.md](PLAN.md) for which steps are implemented; the rest raise `NotImplementedError`.
+All migration steps are implemented; see [PLAN.md](PLAN.md) for what remains before cutover.
 
 For development, `scripts/dev-migrate.sh` loads the dump once and migrates into a recreated scratch database on every run.
 Without `DENDRITE_MEDIA` set to Dendrite's media folder, it generates placeholder media files and points the scratch Dendrite database at them.

@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 from synapse.server import HomeServer
 
 from den2syn.dendrite import Dendrite
-from den2syn.steps import account_data, e2e_keys, media, pushers, receipts, rooms, to_device, users
+from den2syn.steps import account_data, e2e_keys, finalize, media, pushers, receipts, rooms, to_device, users
 
 StepFunc = Callable[[HomeServer, Dendrite], Awaitable[None]]
 
@@ -22,14 +22,6 @@ StepFunc = Callable[[HomeServer, Dendrite], Awaitable[None]]
 class Step:
     name: str
     run: StepFunc
-
-
-def _todo(name: str) -> StepFunc:
-    async def run(hs: HomeServer, dendrite: Dendrite) -> None:
-        # TODO: implement the step; see the MIGRATED stories naming it, and PLAN.md.
-        raise NotImplementedError(f"step {name!r} is not implemented yet")
-
-    return run
 
 
 STEPS = [
@@ -41,10 +33,5 @@ STEPS = [
     Step("pushers", pushers.run),
     Step("to_device", to_device.run),
     Step("media", media.run),
-    *(
-        Step(name, _todo(name))
-        for name in (
-            "finalize",
-        )
-    ),
+    Step("finalize", finalize.run),
 ]

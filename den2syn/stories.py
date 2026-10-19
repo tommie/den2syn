@@ -195,7 +195,8 @@ STORIES: dict[str, Story] = {
     "federation_inbound_events_staging": empty(_FEDERATION_CACHE),
     "federation_stream_position": migrated(
         "finalize", (), ("StreamWorkerStore.update_federation_out_pos",),
-        "Moved past the migrated events, or Synapse would send all of history to other servers.",
+        "The events position is moved past the migrated events, or Synapse would send all local "
+        "history to other servers. The federation position tracks worker replication and is left alone.",
         seeded=True),
     "ignored_users": derived(
         ("AccountDataStore.add_account_data_for_user",), "Updated from m.ignored_user_list account data."),
