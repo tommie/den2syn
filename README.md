@@ -45,6 +45,99 @@ The `server_name` in `homeserver.yaml` must be the Dendrite server's name.
 
 Synapse requires PostgreSQL 14 or later.
 
+## Cutover runbook
+
+The migration only reads Dendrite's database and media, so Dendrite stays intact for rolling back.
+
+### Before the day
+
+1. **Rehearse with recent data.**
+   Copy a fresh `pg_dump` of Dendrite's database to `integration-test/dendrite-dumps/dendrite.dump`, and Dendrite's media folder (`media_api.base_path`) to `integration-test/dendrite-dumps/media/`.
+   Run `scripts/dev-migrate.sh` with `DENDRITE_MEDIA` set to that folder, then `scripts/dev-client-test.sh` with `PASSWORD_<localpart>` and `RECOVERY_KEY_<localpart>` for at least one user.
+   Every step checks its own result, so a successful run is the main evidence the real one will work.
+
+2. **Prepare Synapse**, of the version in `sources/synapse` (v1.163.0), on PostgreSQL 14 or later.
+   Upgrade Synapse only after migrating, since den2syn uses Synapse's internal storage code.
+   Create an empty database, as Synapse requires:
+
+   ```sql
+   CREATE DATABASE synapse ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
+   ```
+
+3. **Convert Dendrite's signing key**, so other servers keep trusting events and requests this server signed.
+   Dendrite's key is the PEM file in `global.private_key`:
+
+   ```bash
+   python scripts/dendrite_signing_key.py < matrix_key.pem > homeserver.signing.key
+   ```
+
+   Old keys in Dendrite's `global.old_private_keys` go into Synapse's `old_signing_keys`.
+   For ones with a private key file, convert it the same way, then run `export_signing_key -x --expiry-ts <expired_at> old.signing.key` in the Synapse image.
+   For ones with only `public_key` and `key_id`, write the entry directly: `<key_id>: {key: <public_key>, expired_ts: <expired_at>}`.
+
+4. **Write `homeserver.yaml`**, e.g. by generating one (`python -m synapse.app.homeserver --generate-config ...`), then:
+
+   - `server_name`: Dendrite's `global.server_name`.
+   - `public_baseurl`: the client URL users already have.
+   - `database`: the empty database, with `name: psycopg2`.
+   - `signing_key_path`: the converted key; `old_signing_keys` as above.
+   - `media_store_path`: where Synapse should keep media; den2syn copies Dendrite's files there.
+   - `max_upload_size`: at least Dendrite's `media_api.max_file_size_bytes`.
+   - `password_config.pepper`: leave unset, or migrated password hashes won't match.
+   - Registration (`enable_registration`, `registration_shared_secret`): to match Dendrite's `client_api` settings.
+   - `serve_server_wellknown` and `public_baseurl`, if Dendrite served `.well-known` (`global.well_known_server_name`, `global.well_known_client_name`). Otherwise keep serving them as today.
+   - `delete_stale_devices_after`: consider e.g. `1y`.
+     Dendrite never removed abandoned sessions, which hold most of the undelivered to-device messages.
+     Synapse runs it daily, based on each device's last seen time, which is migrated.
+
+   Don't start Synapse yet: it must first see the database after migration.
+
+### On the day
+
+1. **Stop Dendrite**, so nothing changes during the migration.
+
+2. **Migrate**, in the Synapse image, with the config, signing key and media store mounted where `homeserver.yaml` says, and Dendrite's media read-only:
+
+   ```bash
+   docker run --rm -v "$PWD":/den2syn:ro -w /den2syn \
+       -v /etc/synapse:/data -v /var/lib/synapse/media:/data/media_store \
+       -v /var/lib/dendrite/media:/dendrite-media:ro \
+       --entrypoint python matrixdotorg/synapse:v1.163.0 \
+       -m den2syn --config /data/homeserver.yaml \
+       --dendrite-db 'postgres://dendrite:...@db/dendrite' --dendrite-media /dendrite-media
+   ```
+
+   Run it as the user Synapse runs as (the image's default is UID 991), so it owns the media files.
+   On failure, fix the cause, recreate the Synapse database, empty the media store, and run again.
+
+3. **Start Synapse**, and check it with the client test:
+
+   ```bash
+   python -m tests.client_test --synapse http://synapse:8008 \
+       --dendrite-db 'postgres://dendrite:...@db/dendrite' --dendrite-media /dendrite-media
+   ```
+
+4. **Point the reverse proxy at Synapse**: `/_matrix` and `/_synapse/client` to its listener, for both client and federation traffic (or port 8448, as Dendrite had it).
+
+5. **Have every user clear their client's cache**, e.g. Element's "Clear cache and reload" under Settings → Help & About.
+   They stay logged in, with the same devices and keys.
+   Clients keep their Dendrite sync token, which Synapse accepts but reads differently: the first sync returns nothing, and later syncs continue from Synapse's position.
+   Messages a device hadn't synced before the cutover then never appear in its timeline, which it doesn't know has a gap.
+   Clearing the cache makes the client do a full sync.
+   Waiting to-device messages (e.g. room keys) aren't affected: den2syn makes sure old tokens can't acknowledge them.
+
+### Rolling back
+
+Stop Synapse, point the proxy back, and start Dendrite.
+Anything sent through Synapse in between is lost, and clients need their cache cleared again.
+
+### What changes for users
+
+- Unread counts and notification history start empty; read receipts are kept.
+- Push notifications keep working, through the same pushers.
+- Media from other servers is downloaded again on demand.
+- Server-side features Dendrite didn't have become available, e.g. sliding sync for Element X.
+
 ## Status
 
 All 176 Synapse tables have stories.

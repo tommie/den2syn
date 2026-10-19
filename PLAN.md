@@ -15,5 +15,6 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **finalize**: move `federation_stream_position` past migrated events.
 - [x] **Client-level integration test**: log in with a migrated token, sync, read room history, keys, key backup and media.
 - [x] **Key backup decryption with a real recovery key**: run the client test with `RECOVERY_KEY_<localpart>` set.
-- [ ] **Cutover runbook**: fresh Dendrite dump, Dendrite's signing key as Synapse's (or in `old_signing_keys`), media store paths, reverse proxy and `.well-known`, what clients must do (clear cache, or log in again).
-  Consider `delete_stale_devices_after` (e.g. `1y`): Dendrite never removed abandoned sessions, which hold most of the undelivered to-device messages.
+- [x] **Cutover runbook**: in README.md.
+- [ ] **Rehearse** with a fresh Dendrite dump and media copy, following the runbook.
+- [ ] **Cut over.**
