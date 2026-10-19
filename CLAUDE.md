@@ -7,9 +7,12 @@ See README.md for the design and usage.
 
 - `den2syn/` — Python tool, run as `python -m den2syn`.
   - `stories.py` — the story of every Synapse table (`STORIES`, `Kind`, `check_tables`).
-  - `steps.py` — migration steps in run order (`STEPS`); each MIGRATED story names one.
+  - `steps/` — migration steps in run order (`STEPS`), one module per step; each MIGRATED story names one. Each step verifies its own results (`verify_equal`).
+  - `dendrite.py` — read-only Dendrite access (`Dendrite.query`).
   - `__main__.py` — boots Synapse's storage (`MigrationHomeServer`), checks stories and freshness, runs steps.
 - `tests/test_stories.py` — story consistency; resolves every `via` against the installed Synapse.
+- `scripts/dev-migrate.sh` — dev loop: keeps a PostgreSQL container with the dump loaded, recreates the Synapse database and runs den2syn. Its config is in `/tmp/den2syn/dev/data`.
+- `PLAN.md` — ordered checklist of steps.
 - `integration-test/` — Docker Compose run from a real Dendrite dump (`dendrite-dumps/`, gitignored, real user data).
 - `sources/` — submodules: `dendrite` (0.13.5), `synapse` (v1.163.0, schema 94), plus Matrix client SDKs for E2EE debugging.
 
@@ -26,6 +29,7 @@ See README.md for the design and usage.
 Everything runs in the Synapse image matching `sources/synapse`:
 
 ```bash
+scripts/dev-migrate.sh [--check-only]
 docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories
 SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
@@ -36,7 +40,8 @@ The tool needs a full `homeserver.yaml` (server name, signing key); generate one
 
 - Synapse needs PostgreSQL 14 or later.
 - Synapse functions commit as they go: no dry-run, the target must be fresh. Some tables are seeded with the schema (`seeded=True` stories, `Kind.SYNAPSE`).
-- A fresh Synapse database queues background updates (`populate_stats_*`, `populate_user_directory_*`, sliding sync). Migrate before Synapse's first start so they process migrated data.
+- A fresh Synapse database has pending background updates that create indexes storage functions rely on (e.g. `create_profile` upserts on `profiles.full_user_id`). den2syn runs them first, then re-queues and runs the stats and user directory rebuilds (`_REBUILD_UPDATES`) after migrating.
+- Synapse returns 404 for a profile with neither display name nor avatar; that's expected.
 - `federation_stream_position` starts at -1; unless moved past migrated events, the federation sender sends all of history.
 - Synapse returns 400 for thumbnails missing from `local_media_repository_thumbnails` (unless `dynamic_thumbnails`), so they must be generated.
 - Dendrite keeps push rules (`m.push_rules`) and tags (`m.tag`) in account data; Synapse uses `push_rules*` and `room_tags`.

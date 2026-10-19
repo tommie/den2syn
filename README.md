@@ -47,7 +47,9 @@ Synapse requires PostgreSQL 14 or later.
 ## Status
 
 All 176 Synapse tables have stories.
-The migration steps in [`den2syn/steps.py`](den2syn/steps.py) are not implemented yet; each raises `NotImplementedError`.
+See [PLAN.md](PLAN.md) for which steps are implemented; the rest raise `NotImplementedError`.
+
+For development, `scripts/dev-migrate.sh` loads the dump once and migrates into a recreated scratch database on every run.
 
 ## Testing
 

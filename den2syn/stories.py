@@ -63,8 +63,8 @@ def synapse(note: str) -> Story:
 # Reused explanations.
 _PERSIST = ("EventsPersistenceStorageController.persist_events",)
 _PERSISTED = "Written by Synapse when den2syn persists the room's events."
-_STATS = ("background update populate_stats_*",)
-_USER_DIR = ("background update populate_user_directory_*",)
+_STATS = ("background update populate_stats_*, re-run by den2syn after migrating",)
+_USER_DIR = ("background update populate_user_directory_*, re-run by den2syn after migrating",)
 _NO_APPSERVICES = "No application services are migrated; they are re-registered through Synapse config."
 _TRANSIENT = "Short-lived state; clients start new flows after migration."
 _FEDERATION_CACHE = "Federation state that Synapse rebuilds as it talks to other servers."
@@ -88,8 +88,9 @@ STORIES: dict[str, Story] = {
         "Rooms published to the directory by an application service."),
     "appservice_stream_position": synapse("Singleton stream position; nothing to process without appservices."),
     "background_updates": synapse(
-        "The fresh database queues the updates that build stats, the user directory and sliding sync "
-        "tables. They run on Synapse's first start, after den2syn has filled the source tables."),
+        "den2syn runs the updates a fresh database has pending before migrating, like Synapse's first "
+        "start would, since storage functions rely on the indexes they create. Afterwards it queues "
+        "and runs the stats and user directory rebuilds again over the migrated data."),
     "blocked_rooms": empty("Admin moderation state with no counterpart to carry over."),
     "cache_invalidation_stream_by_instance": synapse("Worker cache invalidation stream."),
     "current_state_delta_stream": derived(_PERSIST, _PERSISTED),
@@ -128,8 +129,8 @@ STORIES: dict[str, Story] = {
         ("DeviceWorkerStore.add_device_change_to_streams",),
         "den2syn announces every local user's devices after migration so clients re-query keys."),
     "devices": migrated(
-        "users", ("userapi_devices",), ("DeviceStore.store_device",),
-        "Device ID and display name; last seen IP, user agent and timestamp are copied too."),
+        "users", ("userapi_devices",), ("DeviceStore.store_device", "DatabasePool.simple_update_one"),
+        "Device ID and display name. Last seen IP, user agent and timestamp are updated directly."),
     "e2e_cross_signing_keys": migrated(
         "e2e_keys", ("keyserver_cross_signing_keys",), ("EndToEndKeyStore.set_e2e_cross_signing_key",),
         "Master, self-signing and user-signing public keys."),
@@ -215,8 +216,8 @@ STORIES: dict[str, Story] = {
     "profile_updates_per_user": derived(("ProfileWorkerStore.set_profile_field",), "Stream of profile changes."),
     "profiles": migrated(
         "users", ("userapi_profiles",),
-        ("RegistrationStore.register_user", "ProfileWorkerStore.set_profile_field"),
-        "Display name and avatar URL."),
+        ("ProfileWorkerStore.create_profile", "ProfileWorkerStore.set_profile_field"),
+        "Display name and avatar URL. Every user gets a row, like Synapse's own registration does."),
     "push_rules": migrated(
         "account_data", ("userapi_account_datas",), ("PushRulesWorkerStore.add_push_rule",),
         "User-defined rules from m.push_rules account data. Server-default rules are built into Synapse."),
@@ -239,7 +240,7 @@ STORIES: dict[str, Story] = {
     "refresh_tokens": empty("Dendrite doesn't issue refresh tokens."),
     "registration_tokens": migrated(
         "users", ("userapi_registration_tokens",), ("RegistrationStore.create_registration_token",),
-        "Unused registration tokens."),
+        "Use counts are updated directly, because create_registration_token starts them at zero."),
     "rejections": derived(_PERSIST, "Events Dendrite marked rejected are persisted as rejected."),
     "remote_media_cache": empty("Remote media is downloaded again from its origin on demand."),
     "remote_media_cache_thumbnails": empty("Remote media is downloaded again from its origin on demand."),
@@ -260,9 +261,9 @@ STORIES: dict[str, Story] = {
         "Membership events, plus the forgotten flag from Dendrite's roomserver_membership."),
     "room_reports": empty("Abuse reports aren't carried over."),
     "room_retention": derived(_PERSIST, "From m.room.retention state events."),
-    "room_stats_current": derived(_STATS, "Built on first start."),
-    "room_stats_earliest_token": derived(_STATS, "Built on first start."),
-    "room_stats_state": derived(_STATS, "Built on first start."),
+    "room_stats_current": derived(_STATS, "Built from the migrated rooms and users."),
+    "room_stats_earliest_token": derived(_STATS, "Built from the migrated rooms and users."),
+    "room_stats_state": derived(_STATS, "Built from the migrated rooms and users."),
     "room_tags": migrated(
         "account_data", ("userapi_account_datas",), ("TagsWorkerStore.add_tag_to_room",),
         "From m.tag room account data."),
@@ -313,8 +314,8 @@ STORIES: dict[str, Story] = {
     "un_partial_stated_event_stream": empty("Dendrite has full state for every room it knows."),
     "un_partial_stated_room_stream": empty("Dendrite has full state for every room it knows."),
     "user_daily_visits": empty("Only used for usage statistics."),
-    "user_directory": derived(_USER_DIR, "Built on first start."),
-    "user_directory_search": derived(_USER_DIR, "Built on first start."),
+    "user_directory": derived(_USER_DIR, "Built from the migrated rooms and users."),
+    "user_directory_search": derived(_USER_DIR, "Built from the migrated rooms and users."),
     "user_directory_stale_remote_users": derived(_USER_DIR, "Refreshed as remote profiles change."),
     "user_directory_stream_pos": synapse("Singleton stream position; moved forward by the user directory background update."),
     "user_external_ids": empty("SSO identities; Dendrite only supports password login."),
@@ -327,19 +328,21 @@ STORIES: dict[str, Story] = {
     "user_reports": empty("Abuse reports aren't carried over."),
     "user_signature_stream": empty(
         "Only notifies about new signatures; clients do a fresh key query after migration."),
-    "user_stats_current": derived(_STATS, "Built on first start."),
+    "user_stats_current": derived(_STATS, "Built from the migrated rooms and users."),
     "user_threepid_id_server": empty("Dendrite doesn't record identity server bindings."),
     "user_threepids": migrated(
         "users", ("userapi_threepids",), ("RegistrationWorkerStore.user_add_threepid",),
         "Email addresses and phone numbers bound to accounts."),
     "users": migrated(
         "users", ("userapi_accounts",),
-        ("RegistrationStore.register_user", "RegistrationWorkerStore.set_user_deactivated_status"),
-        "Password hash, admin and guest flags, and deactivation. creation_ts is copied from Dendrite."),
-    "users_in_public_rooms": derived(_USER_DIR, "Built on first start."),
+        ("RegistrationStore.register_user", "RegistrationWorkerStore.set_user_deactivated_status",
+         "DatabasePool.simple_update_one"),
+        "Password hash (both use bcrypt), admin and guest flags, and deactivation. creation_ts is "
+        "updated directly, because register_user stamps the current time."),
+    "users_in_public_rooms": derived(_USER_DIR, "Built from the migrated rooms and users."),
     "users_pending_deactivation": empty("Dendrite completes deactivation immediately."),
     "users_to_send_full_presence_to": empty("Presence is ephemeral."),
-    "users_who_share_private_rooms": derived(_USER_DIR, "Built on first start."),
+    "users_who_share_private_rooms": derived(_USER_DIR, "Built from the migrated rooms and users."),
     "worker_locks": synapse("Runtime locks."),
     "worker_read_write_locks": synapse("Runtime locks."),
     "worker_read_write_locks_mode": synapse("Runtime locks."),

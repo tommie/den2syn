@@ -25,6 +25,7 @@ from synapse.storage import DataStore
 from synapse.storage.database import LoggingTransaction
 
 from den2syn import stories, steps
+from den2syn.dendrite import Dendrite
 from den2syn.stories import Kind
 
 logger = logging.getLogger("den2syn")
@@ -80,7 +81,25 @@ def _check_empty(counts: dict[str, int]) -> None:
         )
 
 
-async def migrate(hs: HomeServer, dendrite, check_only: bool) -> None:
+# Background updates that build derived tables from existing data, as queued
+# in a fresh database, as (update_name, depends_on). Synapse's admin API
+# (start_job) re-queues these the same way.
+_REBUILD_UPDATES = [
+    ("populate_stats_process_rooms", None),
+    ("populate_stats_process_users", None),
+    ("populate_user_directory_createtables", None),
+    ("populate_user_directory_process_rooms", "populate_user_directory_createtables"),
+    ("populate_user_directory_process_users", "populate_user_directory_process_rooms"),
+    ("populate_user_directory_cleanup", "populate_user_directory_process_users"),
+]
+
+
+async def _run_background_updates(hs: HomeServer) -> None:
+    for store in (hs.get_datastores().main, hs.get_datastores().state):
+        await store.db_pool.updates.run_background_updates(sleep=False)
+
+
+async def migrate(hs: HomeServer, dendrite: Dendrite, check_only: bool) -> None:
     counts = await _table_counts(hs)
     stories.check_tables(set(counts))
     logger.info("All %d Synapse tables have a story.", len(counts))
@@ -88,9 +107,26 @@ async def migrate(hs: HomeServer, dendrite, check_only: bool) -> None:
     if check_only:
         return
 
+    # A fresh database has pending updates that create indexes Synapse's
+    # storage functions rely on (e.g. create_profile upserts on
+    # profiles.full_user_id). Run them, like Synapse's first start would.
+    logger.info("Running pending background updates...")
+    await _run_background_updates(hs)
+
     for step in steps.STEPS:
         logger.info("Step %s...", step.name)
         await step.run(hs, dendrite)
+
+    # The rebuilds ran on the empty database above, so run them again over
+    # the migrated data.
+    logger.info("Rebuilding stats and the user directory...")
+    await hs.get_datastores().main.db_pool.simple_insert_many(
+        "background_updates",
+        keys=("update_name", "progress_json", "depends_on"),
+        values=[(name, "{}", depends_on) for name, depends_on in _REBUILD_UPDATES],
+        desc="den2syn_rebuild_updates",
+    )
+    await _run_background_updates(hs)
 
     counts = await _table_counts(hs)
     _check_empty(counts)
@@ -127,10 +163,9 @@ def main() -> None:
     # Instantiates storage classes so their background updates are registered.
     hs.get_storage_controllers()
 
-    # Dendrite is only ever read, so a single read-only connection in the
-    # reactor thread is fine. Blocking is acceptable in a batch tool.
-    dendrite = psycopg2.connect(args.dendrite_db)
-    dendrite.set_session(readonly=True)
+    conn = psycopg2.connect(args.dendrite_db)
+    conn.set_session(readonly=True)
+    dendrite = Dendrite(conn, hs.hostname)
 
     exit_code = 1
 
