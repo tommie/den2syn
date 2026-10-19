@@ -1,131 +1,60 @@
 # den2syn - Matrix Dendrite to Synapse Migration Tool
 
-A tool for migrating Matrix homeserver data from Dendrite to Synapse, implemented in Go.
+Migrates a Dendrite homeserver's PostgreSQL database into a fresh Synapse database.
 
-## Features
+Targets Dendrite 0.13.5 and Synapse v1.163.0 (schema 94), as found in `sources/`.
 
-- **Idempotent Migration**: Can run multiple times without destroying data
-- **Progress Tracking**: Visual progress bars for each migration phase
-- **Dry-run Mode**: Default safe mode that shows what would be done without making changes
-- **Verbose Logging**: Detailed SQL query logging with `--verbose` flag
-- **Transaction Safety**: All operations in a single transaction with rollback support
-- **PostgreSQL Support**: Optimized for PostgreSQL databases
+## Design
 
-## Installation
+den2syn is a Python tool that runs inside Synapse's own environment and writes through Synapse's storage code: `persist_events` for room history, `store_state_group` for state, and the store functions behind the client APIs for everything else.
+Synapse then fills its derived tables (DAG edges, auth chains, current state, memberships, search, streams) itself, rather than us re-implementing them.
 
-```bash
-# Clone the repository
-git clone https://github.com/tommie/den2syn
-cd den2syn
+### Table stories
 
-# Build the tool
-go build -o den2syn ./cmd/den2syn
+Every table in Synapse's database has a *story* in [`den2syn/stories.py`](den2syn/stories.py), saying how it ends up correct after migration:
 
-# Or run directly
-go run ./cmd/den2syn [flags] <dendrite-db-url> <synapse-db-url>
-```
+- **migrated**: den2syn writes rows from Dendrite data, through the named Synapse functions.
+- **derived**: Synapse writes rows itself, as a side effect of a migrated table or in a background update on first start.
+- **empty**: the table must be empty after migration, e.g. caches, short-lived flows and features Dendrite doesn't have.
+- **synapse**: Synapse bookkeeping created with the schema, left untouched.
+
+What gets migrated is decided by what Synapse supports.
+Dendrite data with no home in Synapse is left behind without being reported.
+
+The tool fails if a table lacks a story, or a story names a table that doesn't exist, so a Synapse upgrade can't silently skip new tables.
+After migrating, it fails if any *empty* table got rows.
+
+### No dry-run
+
+Synapse's storage functions commit as they go, so there is no transaction to roll back.
+The target must be a fresh database (only *synapse* tables may have rows); on failure, recreate it and start over.
 
 ## Usage
 
-### Basic Usage
+Run in the Synapse image matching `sources/synapse`, with the target Synapse's `homeserver.yaml`:
 
 ```bash
-# Dry-run mode (safe, shows what would be done)
-./den2syn postgres://user:pass@localhost/dendrite postgres://user:pass@localhost/synapse
+python -m den2syn --config /data/homeserver.yaml --dendrite-db 'postgres://user:pass@host/dendrite'
 
-# Actually perform the migration
-./den2syn --commit postgres://user:pass@localhost/dendrite postgres://user:pass@localhost/synapse
-
-# Verbose mode (shows SQL queries)
-./den2syn --verbose --commit postgres://user:pass@localhost/dendrite postgres://user:pass@localhost/synapse
+# Only check the table stories and that the Synapse database is fresh.
+python -m den2syn --config /data/homeserver.yaml --dendrite-db '...' --check-only
 ```
 
-### Database URL Format
+The `server_name` in `homeserver.yaml` must be the Dendrite server's name.
 
-Database URLs should be in PostgreSQL format:
-- `postgresql://user:password@host:port/database`
-- `postgres://user:password@host:port/database`
+Synapse requires PostgreSQL 14 or later.
 
-### Command Line Options
+## Status
 
-- `-c, --commit`: Commit changes (default is dry-run mode)
-- `-v, --verbose`: Show verbose logging including SQL queries
-- `-h, --help`: Show help information
+All 176 Synapse tables have stories.
+The migration steps in [`den2syn/steps.py`](den2syn/steps.py) are not implemented yet; each raises `NotImplementedError`.
 
-## Migration Process
+## Testing
 
-The tool performs migration in 5 phases:
+```bash
+# Story consistency, resolving each referenced Synapse function in the installed Synapse.
+docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories
 
-### Phase 1: Preparation and Validation
-- Validates database schemas and connectivity
-- Checks data integrity in source database
-- Verifies required tables exist
-
-### Phase 2: NID Resolution System
-- Creates temporary mapping tables for Dendrite's numeric IDs
-- Populates room, event, user, and type mappings
-- Establishes relationship lookups
-
-### Phase 3: Core Data Migration
-- Migrates user accounts and authentication data
-- Migrates device information and access tokens
-- Migrates rooms and room metadata
-- Migrates all events with proper JSON content
-- Migrates event relationships and authorization chains
-
-### Phase 4: State and Membership Migration
-- Converts Dendrite's state snapshots to Synapse's state groups
-- Migrates current room state for fast lookups
-- Migrates room membership data with history
-
-### Phase 5: Advanced Features
-- Updates sequence generators and stream positions
-- Migrates account data and user preferences
-- Migrates push notification rules
-- Finalizes migration with integrity checks
-
-## Implementation Details
-
-### Database Schema Compatibility
-
-The tool migrates from:
-- **Dendrite v0.11.1** database schema
-- **Synapse v1.133.0** database schema (Schema v72)
-
-### Safety Features
-
-- **Atomic Transactions**: All operations in single transaction
-- **Dry-run Default**: No changes unless `--commit` specified
-- **Data Validation**: Pre and post-migration integrity checks
-- **Rollback Support**: Complete rollback on any failure
-- **Idempotent Design**: Safe to run multiple times
-
-## Prerequisites
-
-- Go 1.24.4 or later
-- PostgreSQL databases for both Dendrite and Synapse
-- Sufficient database permissions for schema modifications
-- Backup of source database recommended
-
-## Example Output
-
+# End-to-end, from a Dendrite dump in integration-test/dendrite-dumps/.
+SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
-$ ./den2syn --verbose postgres://user:pass@localhost/dendrite postgres://user:pass@localhost/synapse
-
-time="2025-07-04T09:23:20+02:00" level=debug msg="Verbose logging enabled"
-time="2025-07-04T09:23:20+02:00" level=info msg="Starting den2syn migration" commit_mode=false
-time="2025-07-04T09:23:20+02:00" level=info msg="Connecting to databases..."
-time="2025-07-04T09:23:20+02:00" level=info msg="Phase: Phase 1 - Preparation and Validation"
-Migration Progress [==============>                 ] 45% | 12/27 steps
-time="2025-07-04T09:23:25+02:00" level=info msg="Phase: Phase 2 - NID Resolution System"
-Migration Progress [=========================>      ] 78% | 21/27 steps
-time="2025-07-04T09:23:30+02:00" level=info msg="Migration completed successfully!"
-```
-
-## Contributing
-
-Contributions are welcome! Please ensure all changes include:
-
-- Appropriate tests
-- Documentation updates
-- Backward compatibility considerations

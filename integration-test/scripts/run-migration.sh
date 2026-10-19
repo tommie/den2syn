@@ -51,18 +51,17 @@ psql "$DENDRITE_DB_URL" -c "
 "
 
 echo
-echo "=== Running Migration (Dry-run) ==="
+echo "=== Checking Table Stories ==="
 
-# First run in dry-run mode to verify everything works
-echo "Running dry-run migration..."
-./den2syn --verbose --server-name "${SERVER_NAME:-test.local}" "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-dry-run.log"
+python -m unittest tests.test_stories 2>&1 | tee "$LOG_DIR/test-stories.log"
+
+# Verifies every Synapse table has a story, and that the database is fresh.
+python -m den2syn --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" --check-only 2>&1 | tee "$LOG_DIR/migration-check.log"
 
 echo
-echo "=== Running Migration (Commit) ==="
+echo "=== Running Migration ==="
 
-# Now run the actual migration
-echo "Running actual migration with --commit..."
-./den2syn --verbose --commit --server-name "${SERVER_NAME:-test.local}" "$DENDRITE_DB_URL" "$SYNAPSE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-commit.log"
+python -m den2syn --verbose --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-run.log"
 
 echo
 echo "=== Post-migration Verification ==="

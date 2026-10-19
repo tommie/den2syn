@@ -33,7 +33,7 @@ This will:
 - Remove containers and volumes from any previous run
 - Build all necessary containers
 - Load the Dendrite database from dump files
-- Run migration in both dry-run and commit modes
+- Check the table stories, then run the migration
 - Start Synapse with the migrated data
 - Run some validation tests
 - Show detailed results and logs
@@ -42,8 +42,8 @@ This will:
 
 ### Services
 
-1. **postgres**: PostgreSQL 13 with Dendrite data loaded
-2. **den2syn-migration**: Runs the migration tool
+1. **postgres**: PostgreSQL 17 with Dendrite data loaded
+2. **den2syn-migration**: Runs the migration tool in the Synapse image
 3. **synapse**: Synapse homeserver using migrated data
 4. **integration-test**: Test runner with validation suite
 
@@ -59,9 +59,9 @@ This will:
 ```
 PostgreSQL ← Load Dendrite dumps
     ↓
-den2syn migration (dry-run)
+den2syn story check (--check-only)
     ↓
-den2syn migration (commit)
+den2syn migration
     ↓
 Synapse startup with migrated DB
     ↓

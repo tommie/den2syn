@@ -1,2 +1,3 @@
 /integration-test/dendrite-dumps/
 /integration-test/test-results/
+__pycache__/
