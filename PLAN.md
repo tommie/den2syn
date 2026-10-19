@@ -8,7 +8,7 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **account_data**: `account_data`, `room_account_data`, `room_tags` (from `m.tag`), `push_rules` and `push_rules_enable` (from `m.push_rules`), `user_filters`.
 - [x] **e2e_keys**: device keys, one-time keys, cross-signing keys and signatures, key backup versions and contents.
 - [x] **rooms**: `rooms`, events through `persist_events` with state groups checked against Dendrite's snapshots, aliases, forgotten rooms, published rooms.
-- [ ] **receipts**: needs event stream orderings.
+- [x] **receipts**: needs event stream orderings.
 - [ ] **pushers**: start at the last migrated stream ordering.
 - [ ] **to_device**: undelivered to-device messages for migrated devices.
 - [ ] **media**: copy local media files, store metadata, generate thumbnails with Synapse's thumbnailer.
