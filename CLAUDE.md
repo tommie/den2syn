@@ -46,7 +46,10 @@ The tool needs a full `homeserver.yaml` (server name, signing key); generate one
 - Synapse returns 400 for thumbnails missing from `local_media_repository_thumbnails` (unless `dynamic_thumbnails`), so they must be generated.
 - Dendrite keeps push rules (`m.push_rules`) and tags (`m.tag`) in account data; Synapse uses `push_rules*` and `room_tags`.
 - `synapse.media` is a namespace package; `pkgutil.walk_packages` skips it.
-- Dendrite's `roomserver_events.state_snapshot_nid` is the state *before* the event.
+- Dendrite's `roomserver_events.state_snapshot_nid` is the state *before* the event, except for initial room creation events in rooms made by older Dendrite versions, where it's the state after. A snapshot's blocks combine in order, last entry per key wins (`LoadStateAtSnapshot`).
+- `persist_events` can't take a rejected event in a batch with others; persist it alone, like federation does.
+- Synapse drops a room's current state when no local user is joined.
+- Persisting events one at a time is ~30 ms/event; the rooms step batches them and builds linear contexts itself (`_linear_context`).
 
 ## Commits
 

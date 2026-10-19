@@ -19,7 +19,7 @@ def _synapse_classes() -> dict[str, type]:
     # namespace package (no __init__.py), which pkgutil doesn't descend into.
     root = pathlib.Path(synapse.__file__).parent.parent
     classes: dict[str, type] = {}
-    for subdir in ("storage", "handlers", "media", "federation"):
+    for subdir in ("storage", "handlers", "media", "federation", "state", "events"):
         for path in (root / "synapse" / subdir).rglob("*.py"):
             name = ".".join(path.relative_to(root).with_suffix("").parts).removesuffix(".__init__")
             module = importlib.import_module(name)

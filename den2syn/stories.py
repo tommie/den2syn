@@ -63,6 +63,7 @@ def synapse(note: str) -> Story:
 # Reused explanations.
 _PERSIST = ("EventsPersistenceStorageController.persist_events",)
 _PERSISTED = "Written by Synapse when den2syn persists the room's events."
+_STATE_GROUPS = ("StateHandler.compute_event_context", "UnpersistedEventContext.persist")
 _STATS = ("background update populate_stats_*, re-run by den2syn after migrating",)
 _USER_DIR = ("background update populate_user_directory_*, re-run by den2syn after migrating",)
 _DEVICE_UPDATES = ("DeviceHandler.notify_device_update", "E2eKeysHandler.upload_keys_for_user")
@@ -298,17 +299,14 @@ STORIES: dict[str, Story] = {
     "sliding_sync_joined_rooms_to_recalculate": synapse("Work queue for a background update."),
     "sliding_sync_membership_snapshots": derived(_PERSIST + ("RoomMemberWorkerStore.forget",), _PERSISTED),
     "state_events": derived(_PERSIST, _PERSISTED),
-    "state_group_edges": migrated(
-        "rooms", ("roomserver_state_snapshots", "roomserver_state_block"), ("StateStorageController.store_state_group",),
-        "Synapse chooses when to store a state group as a delta."),
-    "state_groups": migrated(
-        "rooms", ("roomserver_state_snapshots", "roomserver_state_block"), ("StateStorageController.store_state_group",),
-        "One state group per distinct state Dendrite recorded before an event, plus the state after each state event."),
+    "state_group_edges": derived(_STATE_GROUPS, "Links each state group to the one it's a delta of."),
+    "state_groups": derived(
+        _STATE_GROUPS,
+        "Created as events are persisted, from the state of their prev events, like for new events. "
+        "den2syn checks that the state before every event equals Dendrite's snapshot."),
     "state_groups_pending_deletion": synapse("Work queue for state group garbage collection."),
     "state_groups_persisting": synapse("Locks for state groups being persisted."),
-    "state_groups_state": migrated(
-        "rooms", ("roomserver_state_snapshots", "roomserver_state_block"), ("StateStorageController.store_state_group",),
-        "Contents of the state groups."),
+    "state_groups_state": derived(_STATE_GROUPS, "Contents of the state groups, mostly as deltas."),
     "stats_incremental_position": synapse("Singleton stream position; moved forward by the stats background update."),
     "sticky_events": empty("Dendrite has no sticky events (MSC4354)."),
     "stream_ordering_to_exterm": derived(_PERSIST, _PERSISTED),
