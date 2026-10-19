@@ -117,6 +117,12 @@ The migration only reads Dendrite's database and media, so Dendrite stays intact
    Run it as the user Synapse runs as (the image's default is UID 991), so it owns the media files.
    On failure, fix the cause, recreate the Synapse database, empty the media store, and run again.
 
+   Then update PostgreSQL's planner statistics, which are stale after inserting the whole database at once:
+
+   ```bash
+   psql -c ANALYZE 'postgres://synapse:...@db/synapse'
+   ```
+
 4. **Start Synapse**, and check it with the client test:
 
    ```bash
@@ -125,6 +131,8 @@ The migration only reads Dendrite's database and media, so Dendrite stays intact
    ```
 
 5. **Point the reverse proxy at Synapse**: `/_matrix` and `/_synapse/client` to its listener, for both client and federation traffic (or port 8448, as Dendrite had it).
+   Then check federation with the [Federation Tester](https://federationtester.matrix.org/): it should show the same signing key ID as Dendrite's `matrix_key.pem`.
+   The client test doesn't cover federation.
 
 6. **Have users clear the cache of devices listed in step 2** that are still in use, e.g. Element's "Clear cache and reload" under Settings → Help & About.
    They stay logged in, with the same devices and keys.
