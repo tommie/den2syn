@@ -1,5 +1,6 @@
 """Read access to the Dendrite database."""
 
+import pathlib
 from typing import Any
 
 import psycopg2.extensions
@@ -13,11 +14,15 @@ class Dendrite:
     Dendrite reads out of Synapse's connection pool.
     """
 
-    def __init__(self, conn: psycopg2.extensions.connection, server_name: str) -> None:
+    def __init__(
+        self, conn: psycopg2.extensions.connection, server_name: str, media_path: pathlib.Path | None
+    ) -> None:
         self.conn = conn
         # Dendrite supports virtual hosts, Synapse doesn't. Only data for the
         # Synapse server name is migrated.
         self.server_name = server_name
+        # Dendrite's media_api.base_path.
+        self.media_path = media_path
 
     def query(self, sql: str, args: tuple[Any, ...] = ()) -> list[psycopg2.extras.RealDictRow]:
         with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:

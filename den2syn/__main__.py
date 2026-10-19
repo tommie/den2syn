@@ -13,6 +13,7 @@ start over.
 
 import argparse
 import logging
+import pathlib
 import sys
 
 import psycopg2
@@ -146,6 +147,9 @@ def main() -> None:
         "--dendrite-db", required=True,
         help="libpq connection string for the Dendrite database")
     parser.add_argument(
+        "--dendrite-media", type=pathlib.Path,
+        help="Dendrite's media_api.base_path; required to migrate media")
+    parser.add_argument(
         "--check-only", action="store_true",
         help="only check the table stories and that the Synapse database is fresh")
     args = parser.parse_args()
@@ -165,7 +169,7 @@ def main() -> None:
 
     conn = psycopg2.connect(args.dendrite_db)
     conn.set_session(readonly=True)
-    dendrite = Dendrite(conn, hs.hostname)
+    dendrite = Dendrite(conn, hs.hostname, args.dendrite_media)
 
     exit_code = 1
 

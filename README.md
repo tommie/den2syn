@@ -34,7 +34,8 @@ The target must be a fresh database (only *synapse* tables may have rows); on fa
 Run in the Synapse image matching `sources/synapse`, with the target Synapse's `homeserver.yaml`:
 
 ```bash
-python -m den2syn --config /data/homeserver.yaml --dendrite-db 'postgres://user:pass@host/dendrite'
+python -m den2syn --config /data/homeserver.yaml --dendrite-db 'postgres://user:pass@host/dendrite' \
+    --dendrite-media /path/to/dendrite/media_api/base_path
 
 # Only check the table stories and that the Synapse database is fresh.
 python -m den2syn --config /data/homeserver.yaml --dendrite-db '...' --check-only
@@ -50,6 +51,7 @@ All 176 Synapse tables have stories.
 See [PLAN.md](PLAN.md) for which steps are implemented; the rest raise `NotImplementedError`.
 
 For development, `scripts/dev-migrate.sh` loads the dump once and migrates into a recreated scratch database on every run.
+Without `DENDRITE_MEDIA` set to Dendrite's media folder, it generates placeholder media files and points the scratch Dendrite database at them.
 
 ## Testing
 

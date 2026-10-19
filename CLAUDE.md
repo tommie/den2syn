@@ -12,6 +12,7 @@ See README.md for the design and usage.
   - `__main__.py` — boots Synapse's storage (`MigrationHomeServer`), checks stories and freshness, runs steps.
 - `tests/test_stories.py` — story consistency; resolves every `via` against the installed Synapse.
 - `scripts/dev-migrate.sh` — dev loop: keeps a PostgreSQL container with the dump loaded, recreates the Synapse database and runs den2syn. Its config is in `/tmp/den2syn/dev/data`.
+  Without `DENDRITE_MEDIA`, `scripts/dev_media_placeholders.py` generates placeholder media and rewrites the scratch Dendrite database's media hashes and sizes to match.
 - `PLAN.md` — ordered checklist of steps.
 - `integration-test/` — Docker Compose run from a real Dendrite dump (`dendrite-dumps/`, gitignored, real user data).
 - `sources/` — submodules: `dendrite` (0.13.5), `synapse` (v1.163.0, schema 94), plus Matrix client SDKs for E2EE debugging.

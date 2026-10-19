@@ -5,8 +5,9 @@
 # since loading the dump is slow, and recreates the Synapse database every run,
 # since den2syn only migrates into a fresh one.
 #
-# Usage: scripts/dev-migrate.sh [den2syn args...]
+# Usage: [DENDRITE_MEDIA=<dir>] scripts/dev-migrate.sh [den2syn args...]
 #   e.g. scripts/dev-migrate.sh --check-only
+# Without DENDRITE_MEDIA, placeholder media files are generated.
 
 set -euo pipefail
 
@@ -65,9 +66,26 @@ yaml.safe_dump(c, open('/data/homeserver.yaml', 'w'))
     sed -i 's|filename: /homeserver.log|filename: /data/homeserver.log|' "$DATA/$SERVER_NAME.log.config"
 fi
 
+# Synapse's media store must match the recreated database.
+if [ -d "$DATA/media_store" ]; then
+    find "$DATA/media_store" -mindepth 1 -delete
+fi
+
+# Without DENDRITE_MEDIA (Dendrite's media_api.base_path), generate
+# placeholder files, and point the scratch Dendrite database at them.
+if [ -z "${DENDRITE_MEDIA:-}" ]; then
+    DENDRITE_MEDIA=/tmp/den2syn/dev/dendrite-media
+    mkdir -p "$DENDRITE_MEDIA"
+    docker run --rm --user "$(id -u):$(id -g)" --network "$NETWORK" \
+        -v "$PWD/scripts":/scripts:ro -v "$DENDRITE_MEDIA":/dendrite-media \
+        --entrypoint python "$SYNAPSE_IMAGE" \
+        /scripts/dev_media_placeholders.py "host=$PG user=matrix password=matrix dbname=dendrite" /dendrite-media
+fi
+
 exec docker run --rm --user "$(id -u):$(id -g)" --network "$NETWORK" \
-    -v "$PWD":/den2syn:ro -v "$DATA":/data -w /den2syn \
+    -v "$PWD":/den2syn:ro -v "$DATA":/data -v "$DENDRITE_MEDIA":/dendrite-media:ro -w /den2syn \
     -e PYTHONDONTWRITEBYTECODE=1 \
     --entrypoint python "$SYNAPSE_IMAGE" \
     -m den2syn --config /data/homeserver.yaml \
-    --dendrite-db "host=$PG user=matrix password=matrix dbname=dendrite" "$@"
+    --dendrite-db "host=$PG user=matrix password=matrix dbname=dendrite" \
+    --dendrite-media /dendrite-media "$@"
