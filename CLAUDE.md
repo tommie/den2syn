@@ -16,7 +16,7 @@ See README.md for the design and usage.
   Without `DENDRITE_MEDIA`, `scripts/dev_media_placeholders.py` generates placeholder media and rewrites the scratch Dendrite database's media hashes and sizes to match.
 - `PLAN.md` — ordered checklist of steps.
 - `integration-test/` — Docker Compose run from a real Dendrite dump and media folder (`dendrite-dumps/`, `dendrite-dumps/media/`; gitignored, real user data). Use `DENDRITE_MEDIA=$PWD/integration-test/dendrite-dumps/media scripts/dev-migrate.sh` for real media in the dev loop.
-- `sources/` — submodules: `dendrite` (0.13.5), `synapse` (v1.163.0, schema 94), plus Matrix client SDKs for E2EE debugging.
+- `sources/` — submodules: `dendrite` (0.13.5) and `synapse` (v1.163.0, schema 94).
 
 ## Requirements from the user
 
