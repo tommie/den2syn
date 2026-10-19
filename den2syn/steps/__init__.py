@@ -13,7 +13,7 @@ from typing import Awaitable, Callable
 from synapse.server import HomeServer
 
 from den2syn.dendrite import Dendrite
-from den2syn.steps import account_data, e2e_keys, receipts, rooms, users
+from den2syn.steps import account_data, e2e_keys, pushers, receipts, rooms, users
 
 StepFunc = Callable[[HomeServer, Dendrite], Awaitable[None]]
 
@@ -38,10 +38,10 @@ STEPS = [
     Step("e2e_keys", e2e_keys.run),
     Step("rooms", rooms.run),
     Step("receipts", receipts.run),
+    Step("pushers", pushers.run),
     *(
         Step(name, _todo(name))
         for name in (
-            "pushers",
             "to_device",
             "media",
             "finalize",

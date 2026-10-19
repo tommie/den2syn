@@ -9,7 +9,7 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **e2e_keys**: device keys, one-time keys, cross-signing keys and signatures, key backup versions and contents.
 - [x] **rooms**: `rooms`, events through `persist_events` with state groups checked against Dendrite's snapshots, aliases, forgotten rooms, published rooms.
 - [x] **receipts**: needs event stream orderings.
-- [ ] **pushers**: start at the last migrated stream ordering.
+- [x] **pushers**: start at the last migrated stream ordering.
 - [ ] **to_device**: undelivered to-device messages for migrated devices.
 - [ ] **media**: copy local media files, store metadata, generate thumbnails with Synapse's thumbnailer.
 - [ ] **finalize**: move `federation_stream_position` past migrated events.

@@ -239,8 +239,10 @@ STORIES: dict[str, Story] = {
     "push_rules_stream": derived(("PushRulesWorkerStore.add_push_rule", "PushRulesWorkerStore.set_push_rule_enabled"), "Stream of push rule changes."),
     "pusher_throttle": empty("Transient rate limiting state for pushers."),
     "pushers": migrated(
-        "pushers", ("userapi_pushers",), ("PusherStore.add_pusher",),
-        "Starts at the last migrated event, so historic events aren't pushed."),
+        "pushers", ("userapi_pushers", "userapi_devices"), ("PusherStore.add_pusher",),
+        "Starts at the last migrated event, so historic events aren't pushed. Linked to the device and "
+        "access token that created it; pushers of devices that no longer exist are dropped, since "
+        "Synapse deletes pushers on logout."),
     "quarantined_media_changes": empty("Admin moderation state with no counterpart to carry over."),
     "ratelimit_override": empty("Admin configuration with no counterpart to carry over."),
     "receipts_graph": derived(("ReceiptsWorkerStore.insert_receipt",), "Written with each receipt."),
