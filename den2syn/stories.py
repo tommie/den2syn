@@ -219,10 +219,16 @@ STORIES: dict[str, Story] = {
         ("ProfileWorkerStore.create_profile", "ProfileWorkerStore.set_profile_field"),
         "Display name and avatar URL. Every user gets a row, like Synapse's own registration does."),
     "push_rules": migrated(
-        "account_data", ("userapi_account_datas",), ("PushRulesWorkerStore.add_push_rule",),
-        "User-defined rules from m.push_rules account data. Server-default rules are built into Synapse."),
+        "account_data", ("userapi_account_datas",),
+        ("PushRulesWorkerStore.add_push_rule", "PushRulesHandler.set_rule_attr"),
+        "From m.push_rules account data: user-defined rules in Dendrite's order, and actions of default "
+        "rules the user changed. Dendrite stores the full rule set, including its defaults from when "
+        "the account was created, so values matching any default Dendrite has shipped "
+        "(dendrite_default_push_rules.json) count as unchanged, and actions are compared by meaning, "
+        "not text. Actions with duplicate tweaks were written by a buggy client or server and are "
+        "ignored. Default rules Synapse doesn't have are dropped."),
     "push_rules_enable": migrated(
-        "account_data", ("userapi_account_datas",), ("PushRulesWorkerStore.set_push_rule_enabled",),
+        "account_data", ("userapi_account_datas",), ("PushRulesHandler.set_rule_attr",),
         "Enabled flags that differ from Synapse's defaults, from m.push_rules account data."),
     "push_rules_stream": derived(("PushRulesWorkerStore.add_push_rule", "PushRulesWorkerStore.set_push_rule_enabled"), "Stream of push rule changes."),
     "pusher_throttle": empty("Transient rate limiting state for pushers."),
