@@ -2,7 +2,7 @@
 
 Migrates a Dendrite homeserver's PostgreSQL database into a fresh Synapse database.
 
-Targets Dendrite 0.13.5 and Synapse v1.163.0 (schema 94), as found in `sources/`.
+Targets Dendrite 0.15.2 and Synapse v1.163.0 (schema 94), as found in `sources/`.
 
 ## Design
 

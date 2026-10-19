@@ -1,7 +1,7 @@
 [submodule "sources/dendrite"]
 	path = sources/dendrite
-	url = https://github.com/matrix-org/dendrite.git
-	branch = v0.13.5
+	url = https://github.com/element-hq/dendrite.git
+	branch = v0.15.2
 [submodule "sources/synapse"]
 	path = sources/synapse
 	url = https://github.com/element-hq/synapse.git
