@@ -113,7 +113,9 @@ STORIES: dict[str, Story] = {
         ("DeviceInboxWorkerStore.add_local_messages_from_client_to_device_inbox",),
         "Undelivered to-device messages for migrated devices, in order. These carry room keys, so "
         "dropping them could make recent messages undecryptable. Messages to deleted devices are "
-        "dropped, since Synapse deletes a device's inbox with the device."),
+        "dropped, since Synapse deletes a device's inbox with the device. Stream IDs start after "
+        "Dendrite's device list position, which old Dendrite sync tokens carry where Synapse reads "
+        "the to-device position; otherwise their first sync would delete the messages as delivered."),
     "device_lists_changes_converted_stream_position": synapse("Singleton stream position."),
     "device_lists_changes_in_room": derived(
         _DEVICE_UPDATES,

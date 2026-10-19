@@ -185,7 +185,11 @@ def check_user(checks: Checks, conn: Any, synapse: str, media: pathlib.Path, use
         else:
             print(f"skip  {user_id}: key backup decryption (no RECOVERY_KEY_{user['localpart']})")
 
-    # 6. The avatar downloads as the file Dendrite has.
+    # 6. A client still holding its Dendrite sync token gets its waiting
+    # to-device messages, rather than Synapse deleting them as delivered.
+    check_dendrite_token_to_device(checks, conn, synapse, user_id)
+
+    # 7. The avatar downloads as the file Dendrite has.
     avatar = query(conn, """
         SELECT p.avatar_url, m.base64hash FROM userapi_profiles p
         JOIN mediaapi_media_repository m ON p.avatar_url = 'mxc://' || m.media_origin || '/' || m.media_id
@@ -200,6 +204,45 @@ def check_user(checks: Checks, conn: Any, synapse: str, media: pathlib.Path, use
         thumb = client.request(
             "GET", f"/_matrix/client/v1/media/thumbnail/{server_name}/{media_id}?width=96&height=96&method=crop", raw=True)
         checks.true(f"{user_id}: avatar thumbnail", len(thumb) > 0)
+
+
+def dendrite_sync_token(conn: Any) -> str:
+    """Returns a sync token like Dendrite would hand out, at its latest positions.
+
+    Dendrite's StreamingToken: s<pdu>_<typing>_<receipt>_<to-device>_<invite>
+    _<account data>_<device list>_<notification>_<presence>.
+    """
+
+    (r,) = query(conn, """
+        SELECT
+            (SELECT COALESCE(MAX(id), 0) FROM syncapi_output_room_events) AS pdu,
+            (SELECT COALESCE(MAX(id), 0) FROM syncapi_receipts) AS receipt,
+            (SELECT COALESCE(MAX(id), 0) FROM syncapi_send_to_device) AS to_device,
+            (SELECT last_value FROM keyserver_key_changes_seq) AS device_list
+        """)
+    return f"s{r['pdu']}_0_{r['receipt']}_{r['to_device']}_0_0_{r['device_list']}_0_0"
+
+
+def check_dendrite_token_to_device(checks: Checks, conn: Any, synapse: str, user_id: str) -> None:
+    devices = query(conn, """
+        SELECT d.device_id, d.access_token, COUNT(*) AS pending
+        FROM syncapi_send_to_device s
+        JOIN userapi_devices d ON s.user_id = '@' || d.localpart || ':' || d.server_name AND s.device_id = d.device_id
+        WHERE s.user_id = %s
+        GROUP BY d.device_id, d.access_token, d.last_seen_ts
+        ORDER BY d.last_seen_ts DESC LIMIT 1
+        """, (user_id,))
+    if not devices:
+        print(f"skip  {user_id}: Dendrite sync token keeps to-device messages (no device has any waiting)")
+        return
+    d = devices[0]
+    # Doesn't use the returned token, so nothing is acknowledged.
+    sync = Client(synapse, d["access_token"]).get(
+        "/_matrix/client/v3/sync", since=dendrite_sync_token(conn), timeout=0,
+        filter=json.dumps({"room": {"rooms": []}, "presence": {"types": []}, "account_data": {"types": []}}))
+    # Synapse sends at most 100 to-device messages per sync.
+    checks.equal(f"{user_id}: Dendrite sync token gets {d['device_id']}'s waiting to-device messages",
+                 min(d["pending"], 100), len(sync.get("to_device", {}).get("events", [])))
 
 
 def check_password_login(checks: Checks, synapse: str, user: dict[str, Any], password: str) -> None:
