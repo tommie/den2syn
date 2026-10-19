@@ -61,23 +61,9 @@ psql_ -d postgres -c "DROP DATABASE IF EXISTS synapse" \
     -c "CREATE DATABASE synapse TEMPLATE template0 ENCODING 'UTF8' LOCALE 'C'"
 
 mkdir -p "$DATA"
-if [ ! -f "$DATA/homeserver.yaml" ]; then
-    echo "Generating Synapse config..."
-    docker run --rm --user "$(id -u):$(id -g)" -v "$DATA":/data --entrypoint python "$SYNAPSE_IMAGE" \
-        -m synapse.app.homeserver --server-name="$SERVER_NAME" --config-path=/data/homeserver.yaml \
-        --generate-config --report-stats=no --data-directory=/data >/dev/null
-    docker run --rm --user "$(id -u):$(id -g)" -v "$DATA":/data --entrypoint python "$SYNAPSE_IMAGE" -c "
-import yaml
-c = yaml.safe_load(open('/data/homeserver.yaml'))
-c['database'] = {'name': 'psycopg2', 'args': {'user': 'matrix', 'password': 'matrix', 'host': '$PG', 'database': 'synapse'}}
-# Reachable from other containers, for scripts/dev-client-test.sh.
-for listener in c['listeners']:
-    listener['bind_addresses'] = ['0.0.0.0']
-yaml.safe_dump(c, open('/data/homeserver.yaml', 'w'))
-"
-    # The generated log config writes to the working directory, which isn't writable.
-    sed -i 's|filename: /homeserver.log|filename: /data/homeserver.log|' "$DATA/$SERVER_NAME.log.config"
-fi
+docker run --rm --user "$(id -u):$(id -g)" -v "$DATA":/data -v "$PWD/scripts":/scripts:ro \
+    --entrypoint python "$SYNAPSE_IMAGE" /scripts/synapse_dev_config.py \
+    --server-name "$SERVER_NAME" --db-host "$PG" --db-user matrix --db-password matrix
 
 # Synapse's media store must match the recreated database.
 if [ -d "$DATA/media_store" ]; then

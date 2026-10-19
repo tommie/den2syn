@@ -26,33 +26,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=synapse
-      - POSTGRES_USER=matrix
-      - POSTGRES_PASSWORD=matrix_password
     volumes:
       - synapse_data:/data
+      # scripts/synapse_dev_config.py, shared with the dev loop.
+      - ../scripts:/den2syn-scripts:ro
     entrypoint: []
     command:
       - sh
       - -ec
       - |
-        echo 'Generating minimal Synapse config for database initialization...'
-        python -m synapse.app.homeserver \
+        echo 'Generating Synapse config...'
+        python /den2syn-scripts/synapse_dev_config.py \
           --server-name=${SERVER_NAME:-test.local} \
-          --config-path=/data/homeserver.yaml \
-          --generate-config \
-          --report-stats=no \
-          --data-directory=/data
-        echo 'Patching config for PostgreSQL...'
-        sed -i 's/name: sqlite3/name: psycopg2/' /data/homeserver.yaml
-        sed -i 's|database: /data/homeserver.db|database: synapse\n    user: matrix\n    password: matrix_password\n    host: postgres\n    port: 5432\n    cp_min: 5\n    cp_max: 10|' /data/homeserver.yaml
-        echo 'Patching bind addresses to listen on all interfaces...'
-        python -c 'import yaml; p = "/data/homeserver.yaml"; c = yaml.safe_load(open(p)); [l.update(bind_addresses=["0.0.0.0"]) for l in c["listeners"]]; yaml.safe_dump(c, open(p, "w"))'
-        echo 'Patching log config for console output...'
-        sed -i 's/handlers: \[buffer\]/handlers: [console]/' /data/${SERVER_NAME:-test.local}.log.config
+          --db-host=postgres --db-user=matrix --db-password=matrix_password \
+          --log-to-console
         echo 'Initializing Synapse database schema...'
         update_synapse_database --database-config /data/homeserver.yaml
         echo 'Synapse database schema initialized successfully!'
@@ -85,14 +72,10 @@ services:
   synapse:
     image: matrixdotorg/synapse:v1.163.0
     container_name: den2syn-synapse
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=synapse
-      - POSTGRES_USER=matrix
-      - POSTGRES_PASSWORD=matrix_password
     volumes:
       - synapse_data:/data
+      # scripts/synapse_dev_config.py, shared with the dev loop.
+      - ../scripts:/den2syn-scripts:ro
     ports:
       - "8008:8008"
     entrypoint: []
@@ -104,27 +87,12 @@ services:
           echo 'Patching Access-Control-Allow-Private-Network...'
           sed -i 's|request.setHeader(b"Access-Control-Allow-Origin", b"\*")|\0\n    request.setHeader(b"Access-Control-Allow-Private-Network", b"true")|' /usr/local/lib/python3.13/site-packages/synapse/http/server.py
         fi
-        rm -f /data/homeserver.yaml
-        if [ ! -f /data/homeserver.yaml ]; then
-          echo 'Generating Synapse config...'
-          python -m synapse.app.homeserver \
-            --server-name=${SERVER_NAME:-test.local} \
-            --config-path=/data/homeserver.yaml \
-            --generate-config \
-            --report-stats=no \
-            --data-directory=/data
-          echo 'Patching config for PostgreSQL...'
-          sed -i 's/name: sqlite3/name: psycopg2/' /data/homeserver.yaml
-          sed -i 's|database: /data/homeserver.db|database: synapse\n    user: matrix\n    password: matrix_password\n    host: postgres\n    port: 5432\n    cp_min: 5\n    cp_max: 10|' /data/homeserver.yaml
-          echo 'Patching bind addresses to listen on all interfaces...'
-          python -c 'import yaml; p = "/data/homeserver.yaml"; c = yaml.safe_load(open(p)); [l.update(bind_addresses=["0.0.0.0"]) for l in c["listeners"]]; yaml.safe_dump(c, open(p, "w"))'
-          echo 'Setting public base URL...'
-          echo >>/data/homeserver.yaml
-          echo 'public_baseurl: http://localhost:8008/' >>/data/homeserver.yaml
-          echo 'Patching log config for console output...'
-          sed -i 's/handlers: \[buffer\]/handlers: [console]/' /data/${SERVER_NAME:-test.local}.log.config
-          sed -i 's/level: INFO/level: DEBUG/' /data/${SERVER_NAME:-test.local}.log.config
-        fi
+        echo 'Patching Synapse config...'
+        python /den2syn-scripts/synapse_dev_config.py \
+          --server-name=${SERVER_NAME:-test.local} \
+          --db-host=postgres --db-user=matrix --db-password=matrix_password \
+          --public-baseurl=http://localhost:8008/ \
+          --log-to-console --log-level=DEBUG
         echo 'Updating Synapse database schema...'
         update_synapse_database --database-config /data/homeserver.yaml --run-background-updates
         echo 'Starting Synapse validation...'

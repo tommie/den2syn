@@ -42,7 +42,7 @@ The tool needs a full `homeserver.yaml` (server name, signing key); generate one
 ## Gotchas
 
 - Synapse needs PostgreSQL 14 or later.
-- Generated Synapse configs list `bind_addresses` in block YAML, so patch them by loading the YAML, not with `sed`.
+- Dev and test Synapse configs come from `scripts/synapse_dev_config.py` (used by `scripts/dev-migrate.sh` and the Compose file). It patches YAML rather than using `sed`, since the generated layout changes between Synapse versions.
 - Synapse functions commit as they go: no dry-run, the target must be fresh. Some tables are seeded with the schema (`seeded=True` stories, `Kind.SYNAPSE`).
 - A fresh Synapse database has pending background updates that create indexes storage functions rely on (e.g. `create_profile` upserts on `profiles.full_user_id`). den2syn runs them first, then re-queues and runs the stats and user directory rebuilds (`_REBUILD_UPDATES`) after migrating.
 - Synapse returns 404 for a profile with neither display name nor avatar; that's expected.
