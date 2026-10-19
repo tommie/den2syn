@@ -111,8 +111,9 @@ STORIES: dict[str, Story] = {
     "device_inbox": migrated(
         "to_device", ("syncapi_send_to_device",),
         ("DeviceInboxWorkerStore.add_local_messages_from_client_to_device_inbox",),
-        "Undelivered to-device messages for migrated devices. These carry room keys, so dropping "
-        "them would make recent messages undecryptable."),
+        "Undelivered to-device messages for migrated devices, in order. These carry room keys, so "
+        "dropping them could make recent messages undecryptable. Messages to deleted devices are "
+        "dropped, since Synapse deletes a device's inbox with the device."),
     "device_lists_changes_converted_stream_position": synapse("Singleton stream position."),
     "device_lists_changes_in_room": derived(
         _DEVICE_UPDATES,
