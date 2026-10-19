@@ -14,6 +14,5 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **media**: copy local media files, store metadata, generate thumbnails with Synapse's thumbnailer.
 - [x] **finalize**: move `federation_stream_position` past migrated events.
 - [ ] **Client-level integration test**: log in with a migrated token, sync, read room history, restore the key backup and decrypt a message.
-  The Compose setup also needs Dendrite's media folder for `--dendrite-media`.
 - [ ] **Cutover runbook**: fresh Dendrite dump, Dendrite's signing key as Synapse's (or in `old_signing_keys`), media store paths, reverse proxy and `.well-known`, what clients must do (clear cache, or log in again).
   Consider `delete_stale_devices_after` (e.g. `1y`): Dendrite never removed abandoned sessions, which hold most of the undelivered to-device messages.

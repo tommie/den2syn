@@ -16,6 +16,7 @@ The integration test:
 
 - Docker and Docker Compose v2
 - Real Dendrite database dump file in `dendrite-dumps/` directory
+- Dendrite's media folder (`media_api.base_path`) copied to `dendrite-dumps/media/`
 - At least 4GB of available RAM for all containers
 
 The dump files are standard PostgreSQL dump files in ASCII text format with CRLF line terminators, containing CREATE TABLE, COPY, and other SQL statements.

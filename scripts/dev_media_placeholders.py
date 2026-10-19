@@ -5,8 +5,8 @@ layout, and updates the rows' hash and size to match, so den2syn's checks
 pass. Images get a real JPEG, so thumbnailing is exercised.
 
 Only run this against the scratch copy of the Dendrite database: it rewrites
-media metadata. Files are derived from the media ID, so reruns are
-idempotent.
+media metadata, and leaves a den2syn_dev_placeholder_media table as a marker.
+Files are derived from the media ID, so reruns are idempotent.
 
 Usage: python dev_media_placeholders.py <libpq connection string> <media dir>
 """
@@ -46,6 +46,8 @@ def main() -> None:
                 "UPDATE mediaapi_media_repository SET base64hash = %s, file_size_bytes = %s WHERE media_id = %s AND media_origin = %s",
                 (h, len(data), media_id, origin),
             )
+        # Tells dev-migrate.sh to reload the dump before using real media.
+        cur.execute("CREATE TABLE IF NOT EXISTS den2syn_dev_placeholder_media ()")
         print(f"Wrote {len(rows)} placeholder files to {media_dir}.")
 
 

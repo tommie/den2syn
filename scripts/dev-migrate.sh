@@ -39,10 +39,20 @@ until docker exec "$PG" pg_isready -q -U matrix; do sleep 1; done
 # pg_isready succeeds during initdb's temporary server, so wait for the real one.
 until psql_ -d postgres -c "SELECT 1" >/dev/null 2>&1; do sleep 1; done
 
+# Placeholder media rewrote the scratch database's media hashes, so real media
+# needs a fresh copy of the dump.
+if [ -n "${DENDRITE_MEDIA:-}" ] && psql_ -d dendrite -Atc "SELECT to_regclass('den2syn_dev_placeholder_media') IS NOT NULL" 2>/dev/null | grep -q t; then
+    echo "Dropping the Dendrite database, which has placeholder media..."
+    psql_ -d postgres -c "DROP DATABASE dendrite"
+fi
+
 if ! psql_ -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = 'dendrite'" | grep -q 1; then
     echo "Loading the Dendrite dump..."
     # The dump refers to its original owner.
-    psql_ -d postgres -c "CREATE ROLE dendrite" -c "CREATE DATABASE dendrite"
+    if ! psql_ -d postgres -Atc "SELECT 1 FROM pg_roles WHERE rolname = 'dendrite'" | grep -q 1; then
+        psql_ -d postgres -c "CREATE ROLE dendrite"
+    fi
+    psql_ -d postgres -c "CREATE DATABASE dendrite"
     psql_ -d dendrite < "$DUMP"
 fi
 

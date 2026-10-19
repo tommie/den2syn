@@ -56,12 +56,12 @@ echo "=== Checking Table Stories ==="
 python -m unittest tests.test_stories 2>&1 | tee "$LOG_DIR/test-stories.log"
 
 # Verifies every Synapse table has a story, and that the database is fresh.
-python -m den2syn --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" --check-only 2>&1 | tee "$LOG_DIR/migration-check.log"
+python -m den2syn --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" --dendrite-media /dendrite-media --check-only 2>&1 | tee "$LOG_DIR/migration-check.log"
 
 echo
 echo "=== Running Migration ==="
 
-python -m den2syn --verbose --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" 2>&1 | tee "$LOG_DIR/migration-run.log"
+python -m den2syn --verbose --config /data/homeserver.yaml --dendrite-db "$DENDRITE_DB_URL" --dendrite-media /dendrite-media 2>&1 | tee "$LOG_DIR/migration-run.log"
 
 echo
 echo "=== Post-migration Verification ==="
