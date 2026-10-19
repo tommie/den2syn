@@ -11,6 +11,7 @@ See README.md for the design and usage.
   - `dendrite.py` — read-only Dendrite access (`Dendrite.query`).
   - `__main__.py` — boots Synapse's storage (`MigrationHomeServer`), checks stories and freshness, runs steps.
 - `tests/test_stories.py` — story consistency; resolves every `via` against the installed Synapse.
+- `tests/client_test.py` — client-level checks of a running migrated Synapse against Dendrite's database; `scripts/dev-client-test.sh` runs it on the dev loop's result. `tests/test_client_test.py` round-trips its key backup decryption.
 - `scripts/dev-migrate.sh` — dev loop: keeps a PostgreSQL container with the dump loaded, recreates the Synapse database and runs den2syn. Its config is in `/tmp/den2syn/dev/data`.
   Without `DENDRITE_MEDIA`, `scripts/dev_media_placeholders.py` generates placeholder media and rewrites the scratch Dendrite database's media hashes and sizes to match.
 - `PLAN.md` — ordered checklist of steps.
@@ -31,7 +32,8 @@ Everything runs in the Synapse image matching `sources/synapse`:
 
 ```bash
 scripts/dev-migrate.sh [--check-only]
-docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories
+scripts/dev-client-test.sh
+docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories tests.test_client_test
 SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
 
@@ -40,6 +42,7 @@ The tool needs a full `homeserver.yaml` (server name, signing key); generate one
 ## Gotchas
 
 - Synapse needs PostgreSQL 14 or later.
+- Generated Synapse configs list `bind_addresses` in block YAML, so patch them by loading the YAML, not with `sed`.
 - Synapse functions commit as they go: no dry-run, the target must be fresh. Some tables are seeded with the schema (`seeded=True` stories, `Kind.SYNAPSE`).
 - A fresh Synapse database has pending background updates that create indexes storage functions rely on (e.g. `create_profile` upserts on `profiles.full_user_id`). den2syn runs them first, then re-queues and runs the stats and user directory rebuilds (`_REBUILD_UPDATES`) after migrating.
 - Synapse returns 404 for a profile with neither display name nor avatar; that's expected.

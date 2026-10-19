@@ -56,9 +56,17 @@ Without `DENDRITE_MEDIA` set to Dendrite's media folder, it generates placeholde
 ## Testing
 
 ```bash
-# Story consistency, resolving each referenced Synapse function in the installed Synapse.
-docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories
+# Unit tests: story consistency (resolving each referenced Synapse function in the installed
+# Synapse), and key backup decryption round trips.
+docker run --rm -v "$PWD":/den2syn:ro -w /den2syn --entrypoint python matrixdotorg/synapse:v1.163.0 -m unittest tests.test_stories tests.test_client_test
 
-# End-to-end, from a Dendrite dump in integration-test/dendrite-dumps/.
+# Client test against the dev loop's last migration.
+scripts/dev-client-test.sh
+
+# End-to-end, from a Dendrite dump and media folder in integration-test/dendrite-dumps/.
 SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
+
+The client test (`tests/client_test.py`) logs in as each local user with their most recently used Dendrite access token, and checks joined rooms, room history, device and cross-signing keys, the key backup, and avatar media against Dendrite's database.
+Setting `RECOVERY_KEY_<localpart>` also decrypts room keys from that user's backup and checks them against encrypted messages.
+Recovery keys are only read from the environment; in the integration test, also set `RECOVERY_KEY_USER=<localpart>`.

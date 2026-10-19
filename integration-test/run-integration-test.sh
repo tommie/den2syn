@@ -11,6 +11,10 @@ echo
 # Change to integration test directory
 cd "$(dirname "$0")"
 
+# Save logs however the run ends, so failures can be investigated.
+mkdir -p ./test-results
+trap 'docker compose logs > ./test-results/docker-compose.log 2>&1' EXIT
+
 echo "Building all containers..."
 docker compose build
 
@@ -129,13 +133,9 @@ docker compose exec postgres psql -U matrix -d synapse -c "
 echo
 echo "=== Cleanup ==="
 
-# Save logs before cleanup
-echo "Saving logs..."
-mkdir -p ./test-results
-docker compose logs > ./test-results/docker-compose.log 2>&1
 
 # Optional: Keep environment running for manual inspection
-if [ "x${CI:-}" = true ]; then
+if [ "${CI:-}" = true ]; then
     REPLY=n
 else
     read -p "Keep test environment running for manual inspection? (y/N): " -n 1 -r

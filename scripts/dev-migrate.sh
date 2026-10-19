@@ -70,6 +70,9 @@ if [ ! -f "$DATA/homeserver.yaml" ]; then
 import yaml
 c = yaml.safe_load(open('/data/homeserver.yaml'))
 c['database'] = {'name': 'psycopg2', 'args': {'user': 'matrix', 'password': 'matrix', 'host': '$PG', 'database': 'synapse'}}
+# Reachable from other containers, for scripts/dev-client-test.sh.
+for listener in c['listeners']:
+    listener['bind_addresses'] = ['0.0.0.0']
 yaml.safe_dump(c, open('/data/homeserver.yaml', 'w'))
 "
     # The generated log config writes to the working directory, which isn't writable.

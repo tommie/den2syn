@@ -46,7 +46,7 @@ This will:
 1. **postgres**: PostgreSQL 17 with Dendrite data loaded
 2. **den2syn-migration**: Runs the migration tool in the Synapse image
 3. **synapse**: Synapse homeserver using migrated data
-4. **integration-test**: Test runner with validation suite
+4. **integration-test**: Runs `tests/client_test.py` against Synapse, as each migrated user
 
 ### Volumes
 
