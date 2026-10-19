@@ -6,9 +6,10 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **Dev loop**: one command that recreates a scratch Synapse database and runs den2syn against the loaded Dendrite dump.
 - [x] **users**: `users`, `profiles`, `devices`, `access_tokens`, `user_ips`, `user_threepids`, `registration_tokens`.
 - [x] **account_data**: `account_data`, `room_account_data`, `room_tags` (from `m.tag`), `push_rules` and `push_rules_enable` (from `m.push_rules`), `user_filters`.
-- [x] **e2e_keys**: device keys, one-time keys, cross-signing keys and signatures, key backup versions and contents.
+- [x] **e2e_keys**: device keys, one-time keys, fallback keys, cross-signing keys and signatures, key backup versions and contents.
 - [x] **rooms**: `rooms`, events through `persist_events` with state groups checked against Dendrite's snapshots, aliases, forgotten rooms, published rooms.
 - [x] **receipts**: needs event stream orderings.
+- [x] **reports**: users' event reports; needs the reported events.
 - [x] **pushers**: start at the last migrated stream ordering.
 - [x] **to_device**: undelivered to-device messages for migrated devices.
 - [x] **media**: copy local media files, store metadata, generate thumbnails with Synapse's thumbnailer.
@@ -16,5 +17,6 @@ Each step is done when its MIGRATED stories in `den2syn/stories.py` hold for the
 - [x] **Client-level integration test**: log in with a migrated token, sync, read room history, keys, key backup and media.
 - [x] **Key backup decryption with a real recovery key**: run the client test with `RECOVERY_KEY_<localpart>` set.
 - [x] **Cutover runbook**: in README.md.
-- [ ] **Rehearse** with a fresh Dendrite dump and media copy, following the runbook.
+- [ ] **Rehearse** with a fresh Dendrite 0.15.2 dump and media copy, following the runbook.
+  Fallback keys and reports were only tested with rows added to a 0.13.5 dump.
 - [ ] **Cut over.**

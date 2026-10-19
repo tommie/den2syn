@@ -151,9 +151,11 @@ STORIES: dict[str, Story] = {
     "e2e_device_keys_json": migrated(
         "e2e_keys", ("keyserver_device_keys",), ("E2eKeysHandler.upload_keys_for_user",),
         "Device identity keys of migrated devices; without them, other devices can't encrypt to them."),
-    "e2e_fallback_keys_json": empty(
-        "Dendrite doesn't store fallback keys; clients upload new ones when "
-        "device_unused_fallback_key_types shows none."),
+    "e2e_fallback_keys_json": migrated(
+        "e2e_keys", ("keyserver_fallback_keys",),
+        ("E2eKeysHandler.upload_keys_for_user", "EndToEndKeyWorkerStore.claim_e2e_fallback_keys"),
+        "Fallback keys for when a device runs out of one-time keys. Uploading marks them unused, so used ones "
+        "are claimed again, which marks them used."),
     "e2e_one_time_keys_json": migrated(
         "e2e_keys", ("keyserver_one_time_keys",), ("E2eKeysHandler.upload_keys_for_user",),
         "Unclaimed one-time keys, so other devices can start Olm sessions."),
@@ -187,7 +189,9 @@ STORIES: dict[str, Story] = {
     "event_push_summary_last_receipt_stream_id": synapse("Singleton stream position."),
     "event_push_summary_stream_ordering": synapse("Singleton stream position."),
     "event_relations": derived(_PERSIST, _PERSISTED),
-    "event_reports": empty("Abuse reports aren't carried over."),
+    "event_reports": migrated(
+        "reports", ("roomserver_reported_events",), ("RoomStore.add_event_report",),
+        "Users' reports of abusive events. Report IDs are new; nothing outside the admin API refers to them."),
     "event_search": derived(_PERSIST, "Full-text index of unencrypted messages."),
     "event_to_state_groups": derived(
         _PERSIST, "Points at the state groups den2syn builds from Dendrite's state snapshots."),

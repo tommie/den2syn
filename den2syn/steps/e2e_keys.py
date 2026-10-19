@@ -93,17 +93,36 @@ async def _upload_device_keys(hs: HomeServer, dendrite: Dendrite, devices: dict[
     ):
         otks[(row["user_id"], row["device_id"])][f"{row['algorithm']}:{row['key_id']}"] = json.loads(row["key_json"])
 
-    orphans = otks.keys() - devices.keys()
+    # Dendrite keeps one fallback key per algorithm, like Synapse.
+    fallbacks: dict[tuple[str, str], dict[str, Any]] = collections.defaultdict(dict)
+    used: list[tuple[str, str, str]] = []
+    for row in dendrite.query(
+        "SELECT user_id, device_id, key_id, algorithm, key_json, used FROM keyserver_fallback_keys WHERE user_id LIKE %s",
+        ("%:" + dendrite.server_name,),
+    ):
+        fallbacks[(row["user_id"], row["device_id"])][f"{row['algorithm']}:{row['key_id']}"] = json.loads(row["key_json"])
+        if row["used"]:
+            used.append((row["user_id"], row["device_id"], row["algorithm"]))
+
+    orphans = (otks.keys() | fallbacks.keys()) - devices.keys()
     if orphans:
-        raise ValueError(f"one-time keys for devices without device keys: {sorted(orphans)}")
+        raise ValueError(f"one-time or fallback keys for devices without device keys: {sorted(orphans)}")
 
     for (user_id, device_id), device_keys in sorted(devices.items()):
         body: dict[str, Any] = {"device_keys": device_keys}
         if (user_id, device_id) in otks:
             body["one_time_keys"] = otks[(user_id, device_id)]
+        if (user_id, device_id) in fallbacks:
+            body["fallback_keys"] = fallbacks[(user_id, device_id)]
         await handler.upload_keys_for_user(user_id, device_id, body)
 
     store = hs.get_datastores().main
+    # Uploading marks a fallback key unused. A used one has been handed out
+    # to another device, and the client replaces it once sync stops listing
+    # its algorithm as unused, so mark it used again the way claiming does.
+    if used:
+        await store.claim_e2e_fallback_keys([(u, d, alg, True) for u, d, alg in used])
+
     for (user_id, device_id), keys in sorted(otks.items()):
         counts = await store.count_e2e_one_time_keys(user_id, device_id)
         verify_equal(
@@ -111,7 +130,18 @@ async def _upload_device_keys(hs: HomeServer, dendrite: Dendrite, devices: dict[
             dict(collections.Counter(k.split(":", 1)[0] for k in keys)),
             {alg: n for alg, n in counts.items() if n},
         )
-    logger.info("Uploaded keys for %d devices, %d one-time keys.", len(devices), sum(len(k) for k in otks.values()))
+    for (user_id, device_id), keys in sorted(fallbacks.items()):
+        algorithms = {k.split(":", 1)[0] for k in keys}
+        verify_equal(
+            f"unused fallback key algorithms of {user_id} {device_id}",
+            sorted(algorithms - {alg for u, d, alg in used if (u, d) == (user_id, device_id)}),
+            sorted(await store.get_e2e_unused_fallback_key_types(user_id, device_id)),
+        )
+        got = await store.claim_e2e_fallback_keys([(user_id, device_id, alg, False) for alg in algorithms])
+        verify_equal(f"fallback keys of {user_id} {device_id}", keys, got.get(user_id, {}).get(device_id, {}))
+    logger.info(
+        "Uploaded keys for %d devices, %d one-time keys, %d fallback keys (%d used).",
+        len(devices), sum(len(k) for k in otks.values()), sum(len(k) for k in fallbacks.values()), len(used))
 
 
 def _without_signatures(obj: dict[str, Any]) -> dict[str, Any]:
