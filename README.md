@@ -159,7 +159,8 @@ Anything sent through Synapse in between is lost, and clients need their cache c
 ## Status
 
 All 176 Synapse tables have stories.
-All migration steps are implemented; see [PLAN.md](PLAN.md) for what remains before cutover.
+All migration steps are implemented, and rehearsed on production data.
+Fallback keys and event reports have only been tested with rows added to a dump, since production has none.
 
 For development, `scripts/dev-migrate.sh` loads the dump once and migrates into a recreated scratch database on every run.
 Without `DENDRITE_MEDIA` set to Dendrite's media folder, it generates placeholder media files and points the scratch Dendrite database at them.

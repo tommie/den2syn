@@ -14,7 +14,6 @@ See README.md for the design and usage.
 - `tests/client_test.py` — client-level checks of a running migrated Synapse against Dendrite's database; `scripts/dev-client-test.sh` runs it on the dev loop's result. `tests/test_client_test.py` round-trips its key backup decryption.
 - `scripts/dev-migrate.sh` — dev loop: keeps a PostgreSQL container with the dump loaded, recreates the Synapse database and runs den2syn. Its config is in `/tmp/den2syn/dev/data`.
   Without `DENDRITE_MEDIA`, `scripts/dev_media_placeholders.py` generates placeholder media and rewrites the scratch Dendrite database's media hashes and sizes to match.
-- `PLAN.md` — ordered checklist of steps.
 - `integration-test/` — Docker Compose run from a real Dendrite dump and media folder (`dendrite-dumps/`, `dendrite-dumps/media/`; gitignored, real user data). Use `DENDRITE_MEDIA=$PWD/integration-test/dendrite-dumps/media scripts/dev-migrate.sh` for real media in the dev loop.
 - `sources/` — submodules: `dendrite` (0.15.2, from element-hq) and `synapse` (v1.163.0, schema 94).
 
