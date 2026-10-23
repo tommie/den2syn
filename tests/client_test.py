@@ -189,7 +189,11 @@ def check_user(checks: Checks, conn: Any, synapse: str, media: pathlib.Path, use
     # to-device messages, rather than Synapse deleting them as delivered.
     check_dendrite_token_to_device(checks, conn, synapse, user_id)
 
-    # 7. The avatar downloads as the file Dendrite has.
+    # 7. A client paging back from a Dendrite pagination token is refused,
+    # which is why every device needs its cache cleared after cutover.
+    check_dendrite_pagination_token(checks, conn, client, user_id, sorted(want_rooms))
+
+    # 8. The avatar downloads as the file Dendrite has.
     avatar = query(conn, """
         SELECT p.avatar_url, m.base64hash FROM userapi_profiles p
         JOIN mediaapi_media_repository m ON p.avatar_url = 'mxc://' || m.media_origin || '/' || m.media_id
@@ -243,6 +247,35 @@ def check_dendrite_token_to_device(checks: Checks, conn: Any, synapse: str, user
     # Synapse sends at most 100 to-device messages per sync.
     checks.equal(f"{user_id}: Dendrite sync token gets {d['device_id']}'s waiting to-device messages",
                  min(d["pending"], 100), len(sync.get("to_device", {}).get("events", [])))
+
+
+def dendrite_pagination_token(conn: Any, room_id: str) -> str | None:
+    """Returns a pagination token like the prev_batch Dendrite hands out, at the room's latest event.
+
+    Dendrite's TopologyToken: t<depth>_<pdu>. Synapse's are t<topological>-<stream>.
+    """
+
+    rows = query(conn, """
+        SELECT topological_position, stream_position FROM syncapi_output_room_events_topology
+        WHERE room_id = %s ORDER BY topological_position DESC, stream_position DESC LIMIT 1
+        """, (room_id,))
+    return f"t{rows[0]['topological_position']}_{rows[0]['stream_position']}" if rows else None
+
+
+def check_dendrite_pagination_token(checks: Checks, conn: Any, client: Client, user_id: str, room_ids: list[str]) -> None:
+    tokens = ((r, dendrite_pagination_token(conn, r)) for r in room_ids)
+    room_id, token = next(((r, t) for r, t in tokens if t), (None, None))
+    if token is None:
+        print(f"skip  {user_id}: Dendrite pagination token is refused (no joined room has events)")
+        return
+    try:
+        client.get(f"/_matrix/client/v3/rooms/{quote(room_id)}/messages", dir="b", limit=1, **{"from": token})
+        got = 200
+    except urllib.error.HTTPError as e:
+        got = e.code
+    # If Synapse starts accepting them, the cutover runbook may no longer need
+    # every device's cache cleared.
+    checks.equal(f"{user_id}: Dendrite pagination token {token} in {room_id} is refused", 400, got)
 
 
 def check_password_login(checks: Checks, synapse: str, user: dict[str, Any], password: str) -> None:

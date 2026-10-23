@@ -134,14 +134,18 @@ The migration only reads Dendrite's database and media, so Dendrite stays intact
    Then check federation with the [Federation Tester](https://federationtester.matrix.org/): it should show the same signing key ID as Dendrite's `matrix_key.pem`.
    The client test doesn't cover federation.
 
-6. **Have users clear the cache of devices listed in step 2** that are still in use, e.g. Element's "Clear cache and reload" under Settings → Help & About.
+6. **Have users clear the cache of every device** that's still in use, e.g. "Clear cache and reload" under Settings → Help & About in Element Web and Desktop, or "Clear cache" under Settings → General in Element Classic on Android and Settings → Advanced on iOS.
    They stay logged in, with the same devices and keys.
-   Clients keep their Dendrite sync token, which Synapse accepts but reads differently: Dendrite's room position is ahead of Synapse's, so Synapse lowers it to its current position.
-   Messages a device hadn't synced before the cutover then never appear in its timeline, which it doesn't know has a gap.
-   Clearing the cache makes the client do a full sync.
-   Devices that had synced everything lose nothing, so they don't need it.
-   The script errs towards listing devices: Dendrite updates a device's last seen time at most once a minute.
-   An abandoned device that's listed only has the gap if it's ever used again; clearing its cache then fixes it.
+   Clearing the cache makes the client do a full sync, which fixes two problems with the tokens it kept from Dendrite:
+   - Synapse refuses Dendrite's pagination tokens (`prev_batch`, `t<depth>_<pdu>`, while Synapse's are `t<topological>-<stream>`) with 400.
+     Until the cache is cleared, the client can't load history older than what it has cached, and may retry several times a second.
+     Every device that synced from Dendrite has these tokens.
+   - Synapse accepts Dendrite's sync token, but reads it differently: Dendrite's room position is ahead of Synapse's, so Synapse lowers it to its current position.
+     Messages a device hadn't synced before the cutover then never appear in its timeline, which it doesn't know has a gap.
+     Only devices listed in step 2 can have such gaps, so they should be cleared first.
+     The script errs towards listing devices: Dendrite updates a device's last seen time at most once a minute.
+
+   An abandoned device only has these problems if it's ever used again; clearing its cache then fixes them.
    Waiting to-device messages (e.g. room keys) aren't affected: den2syn makes sure old tokens can't acknowledge them.
 
 ### Rolling back
@@ -180,7 +184,7 @@ SERVER_NAME=example.com integration-test/run-integration-test.sh
 ```
 
 The client test (`tests/client_test.py`) logs in as each local user with their most recently used Dendrite access token, and checks joined rooms, room history, device and cross-signing keys, the key backup, and avatar media against Dendrite's database.
-It also checks that a client still holding a Dendrite sync token gets its waiting to-device messages.
+It also checks that a client still holding a Dendrite sync token gets its waiting to-device messages, and that Synapse refuses Dendrite's pagination tokens (see step 6 of the cutover).
 Setting `PASSWORD_<localpart>` also logs in with that password, checking that Dendrite's password hash works in Synapse.
 Setting `RECOVERY_KEY_<localpart>` also decrypts room keys from that user's backup and checks them against encrypted messages.
 These are only read from the environment; in the integration test, also set `PASSWORD_USER=<localpart>` or `RECOVERY_KEY_USER=<localpart>`.
